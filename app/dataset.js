@@ -234,7 +234,8 @@ export function importDataset(current, input) {
             parsed = JSON.parse(input.text);
         }
         catch (e) {
-            return { dataset: current, report: { ok: false, contacts: 0, holidays: null, rules: current.rules.isDefault ? 'default' : 'imported', warnings, errors: [`Berkas bukan JSON/CSV yang valid: ${e.message}`] } };
+            const message = e instanceof Error ? e.message : String(e);
+            return { dataset: current, report: { ok: false, contacts: 0, holidays: null, rules: current.rules.isDefault ? 'default' : 'imported', warnings, errors: [`Berkas bukan JSON/CSV yang valid: ${message}`] } };
         }
     }
     if (Array.isArray(parsed))

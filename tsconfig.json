@@ -6,7 +6,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "rootDir": "src",
     "outDir": "app",
-    "strict": false,
+    "strict": true,
     "noEmitOnError": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true

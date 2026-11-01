@@ -99,8 +99,58 @@ export interface ActionFields {
   title?: string;
   owner?: ContactRef | null;
   due?: string | null;
+  language?: 'id' | 'en';
+  draftFrom?: string | null;
+  contentConfirmed?: boolean;
+  datePhrase?: string | null;
+  dateConfidence?: 'explicit' | 'derived' | 'ambiguous' | 'confirmed' | null;
+  dateWeekday?: number | null;
+  duePhrase?: string | null;
+  dueConfidence?: 'explicit' | 'derived' | 'ambiguous' | 'confirmed' | null;
+  timePhrase?: string | null;
+  timeAssumed?: boolean;
+  timeConfirmed?: boolean;
+  conversions?: Array<{ from: { tz: Timezone; time: string }; to: { tz: Timezone; time: string } }>;
+  resolvedFrom?: string;
+  autoAdjusted?: boolean;
+  sourceDocumentId?: string | null;
   [key: string]: unknown;
 }
+
+export interface JobCounts {
+  total: number;
+  answer: number;
+  approve: number;
+  queued: number;
+  done: number;
+  undone: number;
+  cancelled: number;
+  escalated: number;
+}
+
+export interface JobSummary {
+  id: string;
+  title: string;
+  requester: string;
+  channel: string;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+  group: 'mine' | 'running' | 'done';
+  counts: JobCounts;
+  injections: number;
+}
+
+export interface FullJob extends JobSummary {
+  session: Session;
+  summary: Record<string, unknown>;
+  acks: Record<string, Array<{ code: string; label: string }>>;
+}
+
+export type SlotViolation =
+  | { code: 'HOLIDAY_CONFLICT'; zone: Timezone; holiday: Holiday }
+  | { code: 'NOT_A_WORKDAY'; zone: Timezone }
+  | { code: 'OUTSIDE_OFFICE_HOURS' | 'FRIDAY_PRAYER_CONFLICT'; zone: Timezone; start: number; end: number };
 
 export interface Finding {
   code: string;

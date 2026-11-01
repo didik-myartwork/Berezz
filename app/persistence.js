@@ -29,7 +29,7 @@ export class WorkspaceStore {
         };
         const result = this.writeTail.then(write, write);
         // Keep later writes usable after an error while returning this error to its caller.
-        this.writeTail = result.catch(() => undefined);
+        this.writeTail = result.catch(() => { });
         return result;
     }
 }

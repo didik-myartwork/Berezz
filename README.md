@@ -53,6 +53,8 @@ BEREZZ_LLM_BASE_URL=… BEREZZ_LLM_API_KEY=… BEREZZ_LLM_MODEL=… npm start
 ## Uji
 
 ```bash
+npm run typecheck        # TypeScript strict mode
+npm run build
 npm test                 # 36 tes: engine + 20 skenario + MCP + persistence
 node tools/run-cases.mjs # jalankan 20 test case lewat UI nyata dan simpan screenshot
 ```

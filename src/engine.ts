@@ -13,6 +13,8 @@ import type {
   ReviewReport,
   Session,
   Settings,
+  Severity,
+  SlotViolation,
   Timezone,
 } from './types.js';
 import { contactRef } from './dataset.js';
@@ -59,23 +61,23 @@ const NUMBER_WORDS: Record<string, number> = {
   sebelas: 11, 'dua belas': 12, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
 };
 
-export function pad2(n) { return String(n).padStart(2, '0'); }
-export function isoDate(d) { return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`; }
-export function parseISO(dateStr) { return new Date(`${dateStr}T00:00:00Z`); }
-export function addDays(dateStr, n) {
+export function pad2(n: number): string { return String(n).padStart(2, '0'); }
+export function isoDate(d: Date): string { return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`; }
+export function parseISO(dateStr: string): Date { return new Date(`${dateStr}T00:00:00Z`); }
+export function addDays(dateStr: string, n: number): string {
   const d = parseISO(dateStr);
   d.setUTCDate(d.getUTCDate() + n);
   return isoDate(d);
 }
-export function weekdayOf(dateStr) { return parseISO(dateStr).getUTCDay(); }
-export function minutesToHHMM(m) { return `${pad2(Math.floor(m / 60) % 24)}:${pad2(m % 60)}`; }
-export function hhmmToMinutes(s) {
+export function weekdayOf(dateStr: string): number { return parseISO(dateStr).getUTCDay(); }
+export function minutesToHHMM(m: number): string { return `${pad2(Math.floor(m / 60) % 24)}:${pad2(m % 60)}`; }
+export function hhmmToMinutes(s: string | null | undefined): number | null {
   const m = /^(\d{1,2})[:.](\d{2})$/.exec(String(s || '').trim());
   if (!m) return null;
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
-export function convertTimezone(minutes, fromTz, toTz, tzTable) {
+export function convertTimezone(minutes: number, fromTz: Timezone, toTz: Timezone, tzTable: Dataset['timezones']): number | null {
   const a = tzTable[fromTz], b = tzTable[toTz];
   if (!a || !b || minutes == null) return null;
   const out = minutes - a.offsetMinutes + b.offsetMinutes;
@@ -87,27 +89,28 @@ export const DATE_ID_SHORT = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 export const MONTH_ID = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 export const MONTH_ID_SHORT = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
-export function humanDate(dateStr) {
+export function humanDate(dateStr: string): string {
   const d = parseISO(dateStr);
   return `${DATE_ID[d.getUTCDay()]}, ${d.getUTCDate()} ${MONTH_ID[d.getUTCMonth() + 1]} ${d.getUTCFullYear()}`;
 }
-export function shortDate(dateStr) {
+export function shortDate(dateStr: string): string {
   const d = parseISO(dateStr);
   return `${DATE_ID_SHORT[d.getUTCDay()]}, ${d.getUTCDate()} ${MONTH_ID_SHORT[d.getUTCMonth() + 1]}`;
 }
 
-export function stableStringify(value) {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+export function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   const keys = Object.keys(value).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+  const record = value as Record<string, unknown>;
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(record[k])}`).join(',')}}`;
 }
 
 /**
  * FNV-1a 64-bit content fingerprint. Binds an approval to one exact version of an
  * action. Non-cryptographic; a production deployment should use HMAC-SHA256.
  */
-export function fingerprint(value) {
+export function fingerprint(value: unknown): string {
   const str = stableStringify(value);
   let hash = 0xcbf29ce484222325n;
   const prime = 0x100000001b3n;
@@ -121,8 +124,9 @@ export function fingerprint(value) {
 const fpOf = (a: Action) => fingerprint({ type: a.type, fields: a.fields, version: a.version });
 
 /** Today's date in the sender's zone, unless the settings pin a fixed reference date. */
-export function referenceDate(settings: Settings, now = new Date(), tzTable?) {
-  if (settings.refDate?.mode === 'fixed' && /^\d{4}-\d{2}-\d{2}$/.test(settings.refDate.fixed || '')) return settings.refDate.fixed;
+export function referenceDate(settings: Settings, now: Date = new Date(), tzTable?: Dataset['timezones']): string {
+  const fixed = settings.refDate?.fixed;
+  if (settings.refDate?.mode === 'fixed' && fixed && /^\d{4}-\d{2}-\d{2}$/.test(fixed)) return fixed;
   const offset = tzTable?.[settings.defaultTimezone]?.offsetMinutes ?? 420;
   return isoDate(new Date(now.getTime() + offset * 60000));
 }
@@ -147,7 +151,7 @@ export function createSession(dataset: Dataset, settings: Settings, opts: { syst
   };
 }
 
-export function log(session: Session, type: string, detail, actor = 'sistem') {
+export function log(session: Session, type: string, detail: Record<string, unknown> | Array<Record<string, unknown>>, actor = 'sistem'): void {
   session.audit.push({ seq: session.audit.length + 1, at: session.clock(), type, actor, detail, toolMode: 'simulasi' });
 }
 
@@ -155,11 +159,13 @@ export function log(session: Session, type: string, detail, actor = 'sistem') {
 
 const CONNECTOR_LEAD = /^(?:dan|lalu|terus|trus|kemudian|serta|and|then|also|tolong|mohon|please|plus)\b[\s,]*/i;
 
-function rawClauses(text: string) {
-  const out = [];
+interface Clause { text: string; start: number }
+
+function rawClauses(text: string): Clause[] {
+  const out: Clause[] = [];
   const sep = /[,;]\s+|[.!?]\s+|\n+|\s+(?:dan|and|lalu|terus|trus|kemudian|serta|then)\s+/gi;
   let last = 0;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = sep.exec(text)) !== null) {
     if (m.index > last) out.push({ text: text.slice(last, m.index), start: last });
     last = m.index + m[0].length;
@@ -184,9 +190,9 @@ function rawClauses(text: string) {
  * Split a request into clauses. A fragment with no action verb is glued to the clause
  * before it ("rapat dengan Budi dan Rina besok") so its people and dates are not lost.
  */
-export function splitClauses(text: string) {
-  const merged = [];
-  let pending = null;
+export function splitClauses(text: string): Clause[] {
+  const merged: Clause[] = [];
+  let pending: Clause | null = null;
   for (const c of rawClauses(text)) {
     const prev = merged[merged.length - 1];
     const hasIntent = detectIntent(c.text);
@@ -300,7 +306,10 @@ function parseTimeOfDay(text: string) {
   return null;
 }
 
-function parseDate(text: string, systemDate: string) {
+type DateConfidence = 'explicit' | 'derived' | 'ambiguous';
+interface ParsedDate { date: string | null; confidence: DateConfidence; phrase: string; weekday?: number }
+
+function parseDate(text: string, systemDate: string): ParsedDate | null {
   const t = text.toLowerCase();
   const iso = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(t);
   if (iso) return { date: iso[0], confidence: 'explicit', phrase: iso[0] };
@@ -364,8 +373,8 @@ const NOT_A_NAME = new Set([
   'semua', 'tolong', 'mohon', 'rapat', 'meeting', 'notulen', 'tugas', 'email', 'bahas', 'membahas', 'today', 'tomorrow', 'next', 'the', 'this', 'wib', 'wita', 'wit',
 ]);
 
-const lower = (s) => String(s || '').toLowerCase();
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const lower = (s: string | null | undefined) => String(s || '').toLowerCase();
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const hasWord = (hay: string, needle: string) => new RegExp(`(^|[^\\p{L}])${escapeRe(lower(needle))}([^\\p{L}]|$)`, 'u').test(lower(hay));
 
 /** Names written in the clause: "ke Pak Budi", "dengan tim Makassar", "untuk Rina", "Bu Sari". */
@@ -374,10 +383,11 @@ export function extractMentions(text: string): string[] {
   const re = new RegExp(`(?:^|[^\\p{L}])(?:(?:${PREP}|${ADDRESS_VERB})\\s+)(?:((?:${HONORIFIC}))\\s+)?((?:tim|team)\\s+[\\p{L}]+|[\\p{L}][\\p{L}'-]*(?:\\s+[\\p{L}][\\p{L}'-]*)?)`, 'giu');
   let m;
   while ((m = re.exec(text)) !== null) {
+    if (!m[2]) continue;
     const honor = m[1];
     const words = m[2].split(/\s+/);
     const isTeam = /^(tim|team)$/i.test(words[0]);
-    const kept = [];
+    const kept: string[] = [];
     if (!isTeam && ROLE_WORDS.includes(lower(words[0]))) { out.add(lower(words[0])); re.lastIndex = m.index + 1; continue; }
     for (const w of words) {
       if (!isTeam && !kept.length && !/^\p{Lu}/u.test(w) && !honor) break;
@@ -390,8 +400,8 @@ export function extractMentions(text: string): string[] {
   }
   const hon = new RegExp(`(?:^|[^\\p{L}])(?:${HONORIFIC})\\s+(\\p{Lu}[\\p{L}'-]+)`, 'giu');
   while ((m = hon.exec(text)) !== null) {
-    const h = /^(\S+)/.exec(m[0].replace(/^[^\p{L}]/u, ''))[1];
-    if (!NOT_A_NAME.has(lower(m[1]))) out.add(`${capitalize(lower(h))} ${m[1]}`);
+    const h = /^(\S+)/.exec(m[0].replace(/^[^\p{L}]/u, ''))?.[1];
+    if (h && m[1] && !NOT_A_NAME.has(lower(m[1]))) out.add(`${capitalize(lower(h))} ${m[1]}`);
   }
   // Role words ("vendor", "klien") count only when addressed: "ke vendor", "kabari vendor", "balas email vendor".
   const lead = new RegExp(`(?:${PREP}|${ADDRESS_VERB}|email|balas|bales|reply|hubungi|surati)\\s+(?:email\\s+|pesan\\s+)?(?:(?:${HONORIFIC})\\s+)?$`, 'i');
@@ -523,7 +533,7 @@ function contextLine(attachments: Attachment[], keys: string[]) {
 
 /* ---------------------------------------------------------------- planner */
 
-function newAction(id: string, type: ActionType, clause): Action {
+function newAction(id: string, type: ActionType, clause: Clause): Action {
   return {
     id,
     type,
@@ -546,7 +556,7 @@ function newAction(id: string, type: ActionType, clause): Action {
   } as Action;
 }
 
-function planClause(clause, session: Session, index: number, forcedType: ActionType | null = null): Action | null {
+function planClause(clause: Clause, session: Session, index: number, forcedType: ActionType | null = null): Action | null {
   const type = forcedType || detectIntent(clause.text);
   if (!type) return null;
   const { dataset, settings } = session;
@@ -591,7 +601,7 @@ function planClause(clause, session: Session, index: number, forcedType: ActionT
         en ? 'The full file is attached. Thank you.' : 'Berkas lengkap terlampir. Terima kasih.',
       ].join('\n');
       draftFrom = `isi lampiran ${doc.name}`;
-      a.source.documentId = doc.id;
+      a.source.documentId = doc.id || null;
     } else if (ctx) {
       const raw = capitalize(topic || cleanTopic(ctx.line));
       subject = raw.length > 64 ? `${raw.slice(0, 63).replace(/\s+\S*$/, '')}…` : raw;
@@ -650,7 +660,7 @@ function planClause(clause, session: Session, index: number, forcedType: ActionT
 
 /* -------------------------------------------------------------- validator */
 
-function finding(code: string, severity, message: string, extra: Partial<Finding> = {}): Finding {
+function finding(code: string, severity: Severity, message: string, extra: Partial<Finding> = {}): Finding {
   return { code, severity, message, ...extra };
 }
 
@@ -662,16 +672,20 @@ function isHoliday(dateStr: string, dataset: Dataset) {
  * Check one slot against the rules in the meeting's zone AND in the local zone of every
  * participant (office hours and Friday prayer are local). Returns the first violation.
  */
-export function slotViolation(dateStr: string, s: number, e: number, tz: Timezone, zones: Timezone[], dataset: Dataset) {
+export function slotViolation(dateStr: string, s: number, e: number, tz: Timezone, zones: Timezone[], dataset: Dataset): SlotViolation | null {
   const rules = dataset.rules;
   const open = hhmmToMinutes(rules.officeHours.start), close = hhmmToMinutes(rules.officeHours.end);
   const ps = hhmmToMinutes(rules.fridayPrayer.start), pe = hhmmToMinutes(rules.fridayPrayer.end);
+  if (open === null || close === null || ps === null || pe === null) {
+    throw new Error('Aturan jam kerja atau salat Jumat tidak valid.');
+  }
   const wd = weekdayOf(dateStr);
   const hol = isHoliday(dateStr, dataset);
   if (hol) return { code: 'HOLIDAY_CONFLICT', zone: tz, holiday: hol };
   if (!rules.officeHours.weekdays.includes(wd)) return { code: 'NOT_A_WORKDAY', zone: tz };
   for (const z of [tz, ...zones.filter((x) => x !== tz)]) {
     const sz = convertTimezone(s, tz, z, dataset.timezones);
+    if (sz === null) throw new Error(`Zona waktu ${z} tidak tersedia di dataset.`);
     const ez = sz + (e - s);
     if (sz < open || ez > close) return { code: 'OUTSIDE_OFFICE_HOURS', zone: z, start: sz, end: ez };
     if (wd === 5 && sz < pe && ez > ps) return { code: 'FRIDAY_PRAYER_CONFLICT', zone: z, start: sz, end: ez };
@@ -680,17 +694,18 @@ export function slotViolation(dateStr: string, s: number, e: number, tz: Timezon
 }
 
 /** Nearest slot (15-minute grid) that satisfies the rules in every relevant zone. */
-export function proposeSlot(dateStr, startMinutes, durationMinutes, timezone, dataset: Dataset, zones: Timezone[] = [], maxLookaheadDays = 10) {
+export function proposeSlot(dateStr: string, startMinutes: number, durationMinutes: number, timezone: Timezone, dataset: Dataset, zones: Timezone[] = [], maxLookaheadDays = 10): Finding['proposal'] {
   const original = slotViolation(dateStr, startMinutes, startMinutes + durationMinutes, timezone, zones, dataset);
   let d = dateStr;
   for (let day = 0; day < maxLookaheadDays; day++) {
-    const grid = [];
+    const grid: number[] = [];
     for (let c = 0; c + durationMinutes <= 1440; c += 15) grid.push(c);
     const ok = grid.filter((c) => !slotViolation(d, c, c + durationMinutes, timezone, zones, dataset));
     if (ok.length) {
       const want = startMinutes;
       ok.sort((x, y) => (Math.abs(x - want) - Math.abs(y - want)) || (y - x));
       const c = ok[0];
+      if (c === undefined) continue;
       const why = !original ? '' : original.code === 'FRIDAY_PRAYER_CONFLICT' ? `keluar dari jam salat Jumat${original.zone !== timezone ? ` (${original.zone})` : ''}`
         : original.code === 'OUTSIDE_OFFICE_HOURS' ? `ke dalam jam kerja ${original.zone !== timezone ? `peserta di ${original.zone}` : 'lokal'}`
         : original.code === 'HOLIDAY_CONFLICT' ? 'karena tanggal semula hari libur' : 'karena tanggal semula bukan hari kerja';
@@ -773,22 +788,27 @@ export function validateAction(action: Action, session: Session): Finding[] {
     }
     const tz = F.timezone || (people.length && tzs.length === 1 && tzs[0] === settings.defaultTimezone ? settings.defaultTimezone : null);
 
-    if (F.date && F.start && tz) {
-      const sMin = hhmmToMinutes(F.start);
-      const eMin = hhmmToMinutes(F.end) ?? sMin + rules.meetingDefaultMinutes;
+    const meetingDate = F.date;
+    const meetingStart = F.start;
+    const meetingEnd = F.end;
+    if (meetingDate && meetingStart && tz) {
+      const sMin = hhmmToMinutes(meetingStart);
+      if (sMin === null) throw new Error(`Jam mulai ${meetingStart} tidak valid.`);
+      const eMin = hhmmToMinutes(meetingEnd) ?? sMin + rules.meetingDefaultMinutes;
       const zones = [...new Set(people.map((p) => p.timezone).filter(Boolean))] as Timezone[];
-      const v = slotViolation(F.date, sMin, eMin, tz, zones, dataset);
+      const v = slotViolation(meetingDate, sMin, eMin, tz, zones, dataset);
       if (v) {
-        const proposal = proposeSlot(F.date, sMin, eMin - sMin, tz, dataset, zones);
-        const local = v.zone !== tz ? ` = ${minutesToHHMM(v.start).replace(':', '.')}–${minutesToHHMM(v.end).replace(':', '.')} ${v.zone} bagi ${people.filter((p) => p.timezone === v.zone).map((p) => p.name).join(', ')}` : '';
-        const msg = v.code === 'HOLIDAY_CONFLICT' ? `${humanDate(F.date)} adalah hari libur (${v.holiday.name}; sumber: ${v.holiday.source}).`
-          : v.code === 'NOT_A_WORKDAY' ? `${humanDate(F.date)} bukan hari kerja (sumber: ${rules.officeHours.source}).`
-          : v.code === 'OUTSIDE_OFFICE_HOURS' ? `${t2(F.start)}–${t2(F.end)} ${tz}${local} di luar jam kerja ${t2(rules.officeHours.start)}–${t2(rules.officeHours.end)} waktu lokal (sumber: ${rules.officeHours.source}).`
-          : `${t2(F.start)}–${t2(F.end)} ${tz}${local} bertabrakan dengan salat Jumat ${t2(rules.fridayPrayer.start)}–${t2(rules.fridayPrayer.end)} waktu lokal (sumber: ${rules.fridayPrayer.source}).`;
+        const proposal = proposeSlot(meetingDate, sMin, eMin - sMin, tz, dataset, zones);
+        const local = 'start' in v && v.zone !== tz ? ` = ${minutesToHHMM(v.start).replace(':', '.')}–${minutesToHHMM(v.end).replace(':', '.')} ${v.zone} bagi ${people.filter((p) => p.timezone === v.zone).map((p) => p.name).join(', ')}` : '';
+        const endLabel = meetingEnd || minutesToHHMM(eMin);
+        const msg = v.code === 'HOLIDAY_CONFLICT' ? `${humanDate(meetingDate)} adalah hari libur (${v.holiday.name}; sumber: ${v.holiday.source}).`
+          : v.code === 'NOT_A_WORKDAY' ? `${humanDate(meetingDate)} bukan hari kerja (sumber: ${rules.officeHours.source}).`
+          : v.code === 'OUTSIDE_OFFICE_HOURS' ? `${t2(meetingStart)}–${t2(endLabel)} ${tz}${local} di luar jam kerja ${t2(rules.officeHours.start)}–${t2(rules.officeHours.end)} waktu lokal (sumber: ${rules.officeHours.source}).`
+          : `${t2(meetingStart)}–${t2(endLabel)} ${tz}${local} bertabrakan dengan salat Jumat ${t2(rules.fridayPrayer.start)}–${t2(rules.fridayPrayer.end)} waktu lokal (sumber: ${rules.fridayPrayer.source}).`;
         f.push(finding(v.code === 'NOT_A_WORKDAY' ? 'OUTSIDE_OFFICE_HOURS' : v.code, 'blocking', msg, { question: 'slot', proposal, localNote: local ? local.replace(/^ = /, '') : null }));
       }
       if (dataset.holidays === null) {
-        f.push(finding('HOLIDAY_DATA_MISSING', 'confirm', `Kalender libur organisasi belum tersedia, jadi status libur ${shortDate(F.date)} tidak diketahui.`, { ackLabel: `${shortDate(F.date)} sudah saya pastikan bukan hari libur` }));
+        f.push(finding('HOLIDAY_DATA_MISSING', 'confirm', `Kalender libur organisasi belum tersedia, jadi status libur ${shortDate(meetingDate)} tidak diketahui.`, { ackLabel: `${shortDate(meetingDate)} sudah saya pastikan bukan hari libur` }));
       }
     }
   }
@@ -814,7 +834,7 @@ function detectSourceConflicts(action: Action, session: Session): Finding[] {
   if (action.type === 'email') return out;
   const date = action.type === 'meeting' ? action.fields.date : action.fields.due;
   if (!date || action.fields.resolvedFrom) return out;
-  const names = (action.type === 'meeting' ? action.fields.participants || [] : [action.fields.owner].filter(Boolean)).map((p) => p.name.split(' ')[0]);
+  const names = (action.type === 'meeting' ? action.fields.participants || [] : action.fields.owner ? [action.fields.owner] : []).map((p) => p.name.split(' ')[0]);
   if (!names.length) return out;
   for (const doc of session.attachments) {
     for (const line of doc.text.split('\n')) {
@@ -825,7 +845,7 @@ function detectSourceConflicts(action: Action, session: Session): Finding[] {
       if (!d || !d.date || d.date === date) continue;
       out.push(finding('SOURCE_CONFLICT', 'blocking',
         `Permintaan menyebut ${shortDate(date)}, sedangkan ${doc.name} menyebut ${shortDate(d.date)}.`,
-        { question: 'source', conflict: { chat: date, doc: d.date, docId: doc.id, docName: doc.name, quote: line.trim() } }));
+        { question: 'source', conflict: { chat: date, doc: d.date, docId: doc.id || doc.name, docName: doc.name, quote: line.trim() } }));
     }
   }
   return out;
@@ -845,16 +865,17 @@ function contactOptions(list: ContactRef[]) {
 function buildQuestions(action: Action, session: Session): ClarificationQuestion[] {
   const { dataset, settings } = session;
   const blocking = action.findings.filter((f) => f.severity === 'blocking' && f.question)
-    .sort((a, b) => QUESTION_ORDER.indexOf(a.question) - QUESTION_ORDER.indexOf(b.question));
+    .sort((a, b) => QUESTION_ORDER.indexOf(a.question ?? '') - QUESTION_ORDER.indexOf(b.question ?? ''));
   const f = blocking[0];
-  if (!f) return [];
+  if (!f?.question) return [];
   const q: ClarificationQuestion = { id: `${action.id}-q-${f.question}-${action.version}`, kind: f.question, finding: f.code, text: '', options: [] };
 
   if (f.question === 'recipient') {
     if (f.code === 'AMBIGUOUS_RECIPIENT') {
+      const candidates = f.candidates || [];
       q.text = `${f.mention} yang mana?`;
-      q.hint = `${f.candidates.length} kontak cocok`;
-      q.options = contactOptions(f.candidates);
+      q.hint = `${candidates.length} kontak cocok`;
+      q.options = contactOptions(candidates);
       q.mention = f.mention;
     } else if (f.code === 'UNKNOWN_CONTACT') {
       q.text = `Siapa "${f.mention}"?`;
@@ -877,11 +898,16 @@ function buildQuestions(action: Action, session: Session): ClarificationQuestion
     q.input = 'line';
   } else if (f.question === 'timezone') {
     const start = action.fields.start;
+    if (!start) return [];
     const list = (f.options || ['WIB', 'WITA', 'WIT']) as Timezone[];
     q.text = action.fields.timePhrase ? `"${action.fields.timePhrase}" jam lokal mana?` : `Jam ${start} itu jam lokal mana?`;
     q.options = list.map((tz) => {
       const others = (['WIB', 'WITA', 'WIT'] as Timezone[]).filter((o) => o !== tz && list.includes(o));
-      const conv = others.map((o) => `${minutesToHHMM(convertTimezone(hhmmToMinutes(start), tz, o, dataset.timezones))} ${o}`).join(' · ');
+      const minutes = hhmmToMinutes(start);
+      const conv = others.map((o) => {
+        const converted = minutes === null ? null : convertTimezone(minutes, tz, o, dataset.timezones);
+        return converted === null ? '' : `${minutesToHHMM(converted)} ${o}`;
+      }).filter(Boolean).join(' · ');
       return { value: tz, label: `${start.replace(':', '.')} ${tz}`, detail: tz === settings.defaultTimezone ? 'zona pengirim' : 'zona peserta', tag: conv ? `= ${conv.replace(/:/g, '.')}` : '' };
     });
   } else if (f.question === 'date') {
@@ -912,6 +938,7 @@ function buildQuestions(action: Action, session: Session): ClarificationQuestion
       q.options = [{ value: `${f.proposal.date}|${f.proposal.start}`, label: `${shortDate(f.proposal.date)}, ${f.proposal.start.replace(':', '.')}–${f.proposal.end.replace(':', '.')} ${f.proposal.timezone}`, detail: f.proposal.reason }];
     }
   } else if (f.question === 'source') {
+    if (!f.conflict) return [];
     q.text = `Permintaan dan ${f.conflict.docName} berbeda. Pakai yang mana?`;
     q.options = [
       { value: `chat|${f.conflict.chat}`, label: `Permintaan · ${shortDate(f.conflict.chat)}`, detail: action.source.quote.slice(0, 90) },
@@ -947,7 +974,7 @@ export function reviewPlan(session: Session): ReviewReport {
   const injectionLines = session.findingsGlobal.filter((f) => f.code === 'INJECTION_DETECTED' && f.sourceId === 'input');
   const live = session.actions.filter((a) => !['cancelled'].includes(a.status));
 
-  const clauses = splitClauses(text).filter((c) => detectIntent(c.text) && !injectionLines.some((f) => c.start >= f.offset && c.start < f.offset + f.quote.length + 1));
+  const clauses = splitClauses(text).filter((c) => detectIntent(c.text) && !injectionLines.some((f) => f.offset !== undefined && f.quote !== undefined && c.start >= f.offset && c.start < f.offset + f.quote.length + 1));
   let missing = 0;
   for (const c of clauses) {
     const covered = live.some((a) => a.source.start < c.start + c.text.length && a.source.end > c.start);
@@ -963,10 +990,10 @@ export function reviewPlan(session: Session): ReviewReport {
       findings.push({ code: 'ADDED_ACTION', severity: 'blocking', actionId: a.id, message: `${a.id} tidak punya kutipan di permintaan asli.` });
       continue;
     }
-    if (injectionLines.some((f) => a.source.start >= f.offset && a.source.start <= f.offset + f.quote.length)) {
+    if (injectionLines.some((f) => f.offset !== undefined && f.quote !== undefined && a.source.start >= f.offset && a.source.start <= f.offset + f.quote.length)) {
       findings.push({ code: 'ACTION_FROM_EMBEDDED_TEXT', severity: 'blocking', actionId: a.id, message: `${a.id} berasal dari baris instruksi tersisip.` });
     }
-    const people: ContactRef[] = a.type === 'email' ? a.fields.to || [] : a.type === 'meeting' ? a.fields.participants || [] : [a.fields.owner].filter(Boolean);
+    const people: ContactRef[] = a.type === 'email' ? a.fields.to || [] : a.type === 'meeting' ? a.fields.participants || [] : a.fields.owner ? [a.fields.owner] : [];
     for (const p of people) {
       if ((a.confirmedContactIds || []).includes(p.id)) continue;
       const c = session.dataset.contacts.find((x) => x.id === p.id);
@@ -1030,11 +1057,11 @@ export function intake(
   }
 
   session.findingsGlobal.push(...scanInjection(clean, 'permintaan', 'input', false));
-  for (const doc of session.attachments) session.findingsGlobal.push(...scanInjection(doc.text, `lampiran ${doc.name}`, doc.id, true));
+  for (const doc of session.attachments) session.findingsGlobal.push(...scanInjection(doc.text, `lampiran ${doc.name}`, doc.id || doc.name, true));
   const inj = session.findingsGlobal.filter((f) => f.code === 'INJECTION_DETECTED');
   if (inj.length) log(session, 'injection_detected', inj.map((f) => ({ source: f.source, line: f.line, quote: f.quote })), 'validator');
-  const injectedInput = inj.filter((f) => f.sourceId === 'input');
-  const fromInjection = (start: number) => injectedInput.some((f) => start >= f.offset && start <= f.offset + f.quote.length);
+  const injectedInput = inj.filter((f) => f.sourceId === 'input' && f.offset !== undefined && f.quote !== undefined);
+  const fromInjection = (start: number) => injectedInput.some((f) => f.offset !== undefined && f.quote !== undefined && start >= f.offset && start <= f.offset + f.quote.length);
 
   let actions: Action[] = [];
   if (plan) {
@@ -1055,8 +1082,9 @@ export function intake(
       const clauseText = clean.slice(start, start + quote.length);
       if (fromInjection(start)) return;
       const a = planClause({ text: clauseText, start }, session, i + 1, type);
+      if (!a) return;
       a.plannedBy = 'model';
-      const limit = (s, n) => String(s || '').trim().slice(0, n);
+      const limit = (s: string | undefined, n: number) => String(s || '').trim().slice(0, n);
       const own: Finding[] = [];
       // A date or time written by the model must also be in the quote; otherwise it is dropped.
       const unsourced = (txt: string) => {
@@ -1084,14 +1112,14 @@ export function intake(
     });
   } else {
     const clauses = splitClauses(clean).filter((c) => !fromInjection(c.start));
-    actions = clauses.map((c, i) => planClause(c, session, i + 1)).filter(Boolean);
+    actions = clauses.map((c, i) => planClause(c, session, i + 1)).filter((action): action is Action => action !== null);
   }
   if (!actions.length) {
     log(session, 'error', { code: 'NO_ACTION' });
     return { ok: false, error: { code: 'NO_ACTION', message: 'Tidak ada permintaan email, rapat, atau tugas yang dikenali. Sebutkan aksinya, misalnya "kirim … ke …" atau "jadwalkan rapat dengan …".' }, actions: [] };
   }
   actions.forEach((a, i) => { a.id = `A${i + 1}`; a.extraFindings = a.extraFindings || []; });
-  const own = actions.map((a) => a.extraFindings);
+  const own = actions.map((a) => a.extraFindings || []);
   session.actions = actions;
   reviewPlan(session);
   actions.forEach((a, i) => { a.extraFindings = [...own[i], ...(a.extraFindings || [])]; refresh(a, session); });
@@ -1107,7 +1135,8 @@ export function intake(
     actions: actions.map((a) => ({ id: a.id, type: a.type, status: a.status, findings: a.findings.map((x) => x.code) })),
     pipelineMs: session.metrics.pipelineMs,
   }, session.planner.mode === 'model' ? session.planner.name : 'planner');
-  log(session, 'review', { reviewer: session.review.reviewer, checked: session.review.checked, matched: session.review.matched, missing: session.review.missing, added: session.review.added }, 'reviewer');
+  const review = session.review;
+  if (review) log(session, 'review', { reviewer: review.reviewer, checked: review.checked, matched: review.matched, missing: review.missing, added: review.added }, 'reviewer');
   return { ok: true, actions };
 }
 
@@ -1115,7 +1144,7 @@ function rereview(session: Session) {
   const own = new Map(session.actions.map((a) => [a.id, (a.extraFindings || []).filter((f) => !String(f.message).startsWith('Reviewer:'))]));
   reviewPlan(session);
   for (const a of session.actions) {
-    a.extraFindings = [...own.get(a.id), ...(a.extraFindings || [])];
+    a.extraFindings = [...(own.get(a.id) || []), ...(a.extraFindings || [])];
     if (['needs_clarification', 'pending_approval', 'approved'].includes(a.status)) {
       const wasApproved = a.status === 'approved';
       refresh(a, session);
@@ -1197,10 +1226,17 @@ function applyAnswer(action: Action, question: ClarificationQuestion, value: str
   if (question.kind === 'content') { F.body = String(value); F.contentConfirmed = true; F.draftFrom = null; }
   if (question.kind === 'subject') F.subject = String(value);
   if (question.kind === 'timezone') {
+    const startTime = F.start;
+    if (!startTime) throw new Error('Jam rapat belum tersedia untuk konversi zona waktu.');
     F.timezone = value as Timezone;
-    const start = hhmmToMinutes(F.start);
+    const start = hhmmToMinutes(startTime);
+    if (start === null) throw new Error('Jam rapat tidak valid untuk konversi zona waktu.');
     F.conversions = (['WIB', 'WITA', 'WIT'] as Timezone[]).filter((tz) => tz !== value && (tz === session.settings.defaultTimezone || (F.participants || []).some((p) => p.timezone === tz)))
-      .map((tz) => ({ from: { tz: value, time: F.start }, to: { tz, time: minutesToHHMM(convertTimezone(start, value, tz, session.dataset.timezones)) } }));
+      .map((tz) => {
+        const converted = convertTimezone(start, value as Timezone, tz, session.dataset.timezones);
+        if (converted === null) throw new Error(`Zona waktu ${tz} tidak tersedia di dataset.`);
+        return { from: { tz: value as Timezone, time: startTime }, to: { tz, time: minutesToHHMM(converted) } };
+      });
     F.timeConfirmed = true;
   }
   if (question.kind === 'date') {
@@ -1216,16 +1252,25 @@ function applyAnswer(action: Action, question: ClarificationQuestion, value: str
   }
   if (question.kind === 'slot') {
     const [date, start] = String(value).split('|');
+    if (!date || !start) throw new Error('Slot yang dipilih tidak valid.');
     const dur = (hhmmToMinutes(F.end) ?? 0) - (hhmmToMinutes(F.start) ?? 0) || session.dataset.rules.meetingDefaultMinutes;
+    const startMinutes = hhmmToMinutes(start);
+    if (startMinutes === null) throw new Error('Jam slot yang dipilih tidak valid.');
     F.date = date;
     F.start = start;
-    F.end = minutesToHHMM(hhmmToMinutes(start) + dur);
+    F.end = minutesToHHMM(startMinutes + dur);
     F.dateConfidence = 'confirmed';
     F.autoAdjusted = true;
     if (!F.timezone) F.timezone = session.settings.defaultTimezone;
     const conv = (F.conversions as Array<{ to: { tz: Timezone } }>) || [];
     if (conv.length) {
-      F.conversions = conv.map((c) => ({ from: { tz: F.timezone, time: start }, to: { tz: c.to.tz, time: minutesToHHMM(convertTimezone(hhmmToMinutes(start), F.timezone, c.to.tz, session.dataset.timezones)) } }));
+      F.conversions = conv.map((c) => {
+        const zone = F.timezone;
+        if (!zone) throw new Error('Zona waktu slot belum tersedia.');
+        const converted = convertTimezone(startMinutes, zone, c.to.tz, session.dataset.timezones);
+        if (converted === null) throw new Error(`Zona waktu ${c.to.tz} tidak tersedia di dataset.`);
+        return { from: { tz: zone, time: start }, to: { tz: c.to.tz, time: minutesToHHMM(converted) } };
+      });
     }
   }
   if (question.kind === 'source') {
@@ -1247,7 +1292,7 @@ export function editAction(session: Session, actionId: string, patch: Partial<Ac
   }
   if (!OPEN.includes(action.status)) throw new Error('Aksi ini sudah tidak bisa disunting.');
   const before = JSON.parse(JSON.stringify(action.fields));
-  const byId = (id) => {
+  const byId = (id: string) => {
     const c = session.dataset.contacts.find((x) => x.id === id);
     if (!c) throw new Error(`Kontak ${id} tidak ada di data.`);
     action.confirmedContactIds = [...new Set([...(action.confirmedContactIds || []), c.id])];
@@ -1260,13 +1305,25 @@ export function editAction(session: Session, actionId: string, patch: Partial<Ac
   for (const [k, v] of Object.entries(rest)) {
     if (['subject', 'body', 'title', 'location'].includes(k)) action.fields[k] = String(v ?? '');
     if (['date', 'due'].includes(k)) action.fields[k] = v ? String(v) : null;
-    if (['start', 'end'].includes(k)) action.fields[k] = v ? minutesToHHMM(hhmmToMinutes(v)) : null;
+    if (['start', 'end'].includes(k)) {
+      const text = typeof v === 'string' ? v : '';
+      const minutes = text ? hhmmToMinutes(text) : null;
+      if (text && minutes === null) throw new Error(`${k === 'start' ? 'Jam mulai' : 'Jam selesai'} harus berformat HH:MM.`);
+      action.fields[k] = minutes === null ? null : minutesToHHMM(minutes);
+    }
     if (k === 'timezone') action.fields.timezone = (['WIB', 'WITA', 'WIT'].includes(String(v)) ? v : null) as Timezone;
   }
   if ('body' in rest) { action.fields.contentConfirmed = true; action.fields.draftFrom = null; }
   if ('date' in rest) action.fields.dateConfidence = 'confirmed';
   if ('due' in rest) action.fields.dueConfidence = 'confirmed';
-  if ('start' in rest) { action.fields.timeAssumed = false; if (!('end' in rest) && action.fields.start) action.fields.end = minutesToHHMM(hhmmToMinutes(action.fields.start) + session.dataset.rules.meetingDefaultMinutes); }
+  if ('start' in rest) {
+    action.fields.timeAssumed = false;
+    if (!('end' in rest) && action.fields.start) {
+      const start = hhmmToMinutes(action.fields.start);
+      if (start === null) throw new Error('Jam mulai harus berformat HH:MM.');
+      action.fields.end = minutesToHHMM(start + session.dataset.rules.meetingDefaultMinutes);
+    }
+  }
   action.version += 1;
   invalidateApproval(action);
   action.acks = {};

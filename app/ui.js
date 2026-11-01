@@ -6,6 +6,10 @@
  */
 import * as E from './engine.js';
 import { icon } from './icons.js';
+function speechRecognitionConstructor() {
+    const speechWindow = window;
+    return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+}
 const S = {
     boot: null,
     token: '',
@@ -27,20 +31,29 @@ const S = {
     lastSig: '',
 };
 /* ------------------------------------------------------------ helpers */
-const $ = (sel) => document.querySelector(sel);
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $ = (sel) => {
+    const element = document.querySelector(sel);
+    if (!element)
+        throw new Error(`Elemen Berezz tidak ditemukan: ${sel}`);
+    return element;
+};
+const HTML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => HTML_ENTITIES[c] ?? c);
 const ico = (n, size = 15) => icon(n, size);
 const plural = (n, w) => `${n} ${w}`;
-const hhmm = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}.${String(d.getMinutes()).padStart(2, '0')}`; };
+const hhmm = (iso) => { if (!iso)
+    return ''; const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}.${String(d.getMinutes()).padStart(2, '0')}`; };
 const t = (s) => String(s || '').replace(':', '.');
-const initials = (name) => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
-const firstName = (n) => String(n || '').split(' ')[0];
+const initials = (name) => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('') || '?';
+const firstName = (n) => String(n || '').split(' ')[0] || '';
 /** "Budi Santoso (Manajer Operasional)" → "Budi S." */
 const shortName = (n) => {
     const words = String(n || '').replace(/\(.*?\)/g, '').trim().split(/\s+/).filter(Boolean);
     return words.length ? [words[0], ...words.slice(1, 2).map((w) => `${w[0]}.`)].join(' ') : null;
 };
 function dayLabel(iso) {
+    if (!iso)
+        return '—';
     const d = new Date(iso);
     const today = new Date();
     const k = (x) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
@@ -56,13 +69,21 @@ function shortWhen(iso) {
     const lbl = dayLabel(iso);
     return lbl === 'Hari ini' ? hhmm(iso) : lbl === 'Kemarin' ? 'Kmrn' : E.shortDate(E.isoDate(new Date(Date.UTC(new Date(iso).getFullYear(), new Date(iso).getMonth(), new Date(iso).getDate()))));
 }
+function boot() {
+    if (!S.boot)
+        throw new Error('Data awal Berezz belum dimuat.');
+    return S.boot;
+}
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
 function toast(msg, kind = 'ok', action) {
     const box = $('#toasts');
     const el = document.createElement('div');
     el.className = `toast${kind === 'err' ? ' err' : ''}`;
     el.innerHTML = `<span>${esc(msg)}</span>${action ? `<button type="button">${esc(action.label)}</button>` : ''}`;
     if (action)
-        el.querySelector('button').addEventListener('click', () => { action.run(); el.remove(); });
+        el.querySelector('button')?.addEventListener('click', () => { action.run(); el.remove(); });
     box.appendChild(el);
     setTimeout(() => el.remove(), kind === 'err' ? 8000 : 5000);
 }
@@ -74,7 +95,7 @@ async function api(path, opts = {}) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-        const msg = typeof data.error === 'string' ? data.error : data.error?.message || (data.report?.errors || []).join(' ') || `HTTP ${res.status}`;
+        const msg = typeof data.error === 'string' ? data.error : data.error?.message || data.report?.errors?.join(' ') || `HTTP ${res.status}`;
         throw Object.assign(new Error(msg), { data });
     }
     return data;
@@ -107,7 +128,7 @@ async function run(fn, okMsg) {
         return out;
     }
     catch (e) {
-        toast(e.message, 'err');
+        toast(errorMessage(e), 'err');
         return null;
     }
     finally {
@@ -237,7 +258,7 @@ function peopleOf(a) {
 }
 /* ------------------------------------------------------------ sidebar */
 function renderSide() {
-    const b = S.boot;
+    const b = boot();
     const jobs = b.jobs;
     const r = S.route;
     const cur = (cond) => (cond ? 'aria-current="page"' : '');
@@ -292,7 +313,7 @@ function renderSide() {
 /* ------------------------------------------------------------ inbox */
 function renderInbox() {
     const jobs = filteredJobs();
-    if (!S.boot.jobs.length)
+    if (!boot().jobs.length)
         return renderSetup(true);
     const groups = [
         ['mine', 'Perlu Anda'],
@@ -326,10 +347,10 @@ function renderJob(job) {
     const s = job.session;
     const acts = s.actions;
     const groups = [
-        ['answer', 'Perlu jawaban Anda', `Tertahan sampai dijawab · maks ${S.boot.dataset.rules.maxClarificationRounds} putaran`, acts.filter((a) => a.status === 'needs_clarification')],
+        ['answer', 'Perlu jawaban Anda', `Tertahan sampai dijawab · maks ${boot().dataset.rules.maxClarificationRounds} putaran`, acts.filter((a) => a.status === 'needs_clarification')],
         ['esc', 'Eskalasi ke manusia', 'Tidak bisa diselesaikan otomatis', acts.filter((a) => a.status === 'escalated')],
         ['approve', 'Siap disetujui', 'Disetujui satu per satu', acts.filter((a) => ['pending_approval', 'approved'].includes(a.status))],
-        ['queue', 'Di antrean', `Bisa diurungkan ${S.boot.dataset.rules.undoWindowSeconds} detik`, acts.filter((a) => a.status === 'queued')],
+        ['queue', 'Di antrean', `Bisa diurungkan ${boot().dataset.rules.undoWindowSeconds} detik`, acts.filter((a) => a.status === 'queued')],
         ['done', 'Selesai', '', acts.filter((a) => ['simulated', 'undone', 'cancelled'].includes(a.status))],
     ];
     const stTag = job.counts.escalated ? ['Eskalasi', 'tag-red'] : job.counts.answer ? ['Perlu jawaban', 'tag-amber'] : job.counts.approve ? ['Siap disetujui', 'tag-iris'] : job.counts.queued ? ['Di antrean', ''] : ['Selesai', 'tag-green'];
@@ -403,8 +424,11 @@ function renderAction(job, a) {
     if (['pending_approval', 'approved'].includes(a.status))
         end = `<button class="btn" type="button" data-act="review" data-a="${a.id}">Tinjau</button>`;
     else if (a.status === 'queued') {
-        const until = a.result.undoUntil;
-        end = `<span class="bar" aria-hidden="true"><span data-bar="${esc(until)}" data-from="${esc(a.result.queuedAt)}"></span></span><span class="mono num" data-until="${esc(until)}" style="font-size:13px;font-weight:500"></span><button class="btn" type="button" data-act="undo" data-a="${a.id}">${ico('undo', 13)}Urungkan</button>`;
+        const result = a.result;
+        if (!result)
+            throw new Error(`Hasil antrean ${a.id} tidak tersedia.`);
+        const until = result.undoUntil;
+        end = `<span class="bar" aria-hidden="true"><span data-bar="${esc(until)}" data-from="${esc(result.queuedAt)}"></span></span><span class="mono num" data-until="${esc(until)}" style="font-size:13px;font-weight:500"></span><button class="btn" type="button" data-act="undo" data-a="${a.id}">${ico('undo', 13)}Urungkan</button>`;
     }
     else
         end = `<span class="tag ${cls}">${label}</span>`;
@@ -456,7 +480,7 @@ function renderAsk(job, a) {
     return `<div class="ask">
     <div class="ask-q"><strong>${esc(q.text)}</strong>${q.hint ? `<span class="muted">${esc(q.hint)}</span>` : ''}</div>
     ${opts}${add}${input}
-    <div class="ask-note">${ico('lock', 13)}Aksi tertahan${round ? ` · putaran belum pasti ${round}/${S.boot.dataset.rules.maxClarificationRounds}` : ''}</div>
+    <div class="ask-note">${ico('lock', 13)}Aksi tertahan${round ? ` · putaran belum pasti ${round}/${boot().dataset.rules.maxClarificationRounds}` : ''}</div>
   </div>`;
 }
 function renderMore(job, a) {
@@ -494,7 +518,7 @@ function renderMore(job, a) {
   </div>`;
 }
 function contactSelect(name, selected, multiple) {
-    const cs = S.boot.dataset.contacts;
+    const cs = boot().dataset.contacts;
     return `<select class="select" name="${name}" ${multiple ? `multiple size="${Math.min(6, Math.max(3, cs.length))}" style="height:auto"` : ''}>
     ${multiple ? '' : '<option value="">— pilih —</option>'}
     ${cs.map((c) => `<option value="${esc(c.id)}" ${selected.includes(c.id) ? 'selected' : ''}>${esc(c.name)}${c.role ? ` · ${esc(c.role)}` : ''}</option>`).join('')}
@@ -565,7 +589,10 @@ function plainSeg(seg, offset, inj) {
     let html = '';
     let i = 0;
     for (const f of inj) {
-        const a = f.offset - offset, b = a + f.quote.length + (seg.slice(Math.max(0, a)).indexOf(f.quote) > 0 ? seg.slice(Math.max(0, a)).indexOf(f.quote) : 0);
+        if (f.offset === undefined || f.quote === undefined)
+            continue;
+        const a = f.offset - offset, quoteAt = seg.slice(Math.max(0, a)).indexOf(f.quote);
+        const b = a + f.quote.length + (quoteAt > 0 ? quoteAt : 0);
         if (a >= seg.length || b <= 0)
             continue;
         const s0 = Math.max(0, a), s1 = Math.min(seg.length, b);
@@ -576,11 +603,11 @@ function plainSeg(seg, offset, inj) {
 }
 function renderRail(job) {
     const s = job.session;
-    const inj = s.findingsGlobal.filter((f) => f.code === 'INJECTION_DETECTED');
+    const inj = s.findingsGlobal.filter((f) => f.code === 'INJECTION_DETECTED' && f.quote !== undefined && f.source !== undefined && f.line !== undefined);
     const rv = s.review;
     const c = job.counts;
     const auditAt = (type) => s.audit.find((e) => e.type === type)?.at;
-    const ds = S.boot.dataset;
+    const ds = boot().dataset;
     const step = (state, label, right = '') => `<li class="step">${state === 'done' ? `<span class="ring done">${ico('tick', 10)}</span>` : `<span class="ring${state === 'now' ? ' now' : ''}"></span>`}<span${state === 'now' ? ' style="font-weight:600"' : state === 'todo' ? ' style="color:var(--text-2)"' : ''}>${label}</span><span class="muted" style="font-size:12px">${right}</span></li>`;
     const live = c.total - c.cancelled;
     return `<aside class="rail" aria-label="Konteks job">
@@ -605,7 +632,7 @@ function renderRail(job) {
     </section>
     <section class="sec"><h3>Data yang dipakai</h3>
       <dl class="kv">
-        <dt>Organisasi</dt><dd>${esc(S.boot.settings.orgName || '—')}</dd>
+        <dt>Organisasi</dt><dd>${esc(boot().settings.orgName || '—')}</dd>
         <dt>Kontak</dt><dd>${ds.contacts.length ? `${ds.contacts.length} · ${esc(ds.meta.fileName || 'manual')}` : '<span class="c-amber">kosong</span>'}</dd>
         <dt>Aturan</dt><dd${ds.rules.isDefault ? ' class="c-amber"' : ''}>${esc(ds.rules.isDefault ? 'bawaan (belum SOP)' : ds.rules.source)}</dd>
         <dt>Hari libur</dt><dd${ds.holidays === null ? ' class="c-amber"' : ''}>${ds.holidays === null ? 'belum tersedia' : `${ds.holidays.length} tanggal`}</dd>
@@ -625,15 +652,17 @@ function openApproval(actionId) {
 }
 function renderDialog() {
     const d = $('#dlg');
-    if (!S.dlg || !S.job)
+    const dlg = S.dlg;
+    const job = S.job;
+    if (!dlg || !job)
         return;
-    const a = S.job.session.actions.find((x) => x.id === S.dlg.actionId);
+    const a = job.session.actions.find((x) => x.id === dlg.actionId);
     if (!a) {
         d.close();
         return;
     }
     const F = a.fields;
-    const acks = (S.job.acks || {})[a.id] || [];
+    const acks = (job.acks || {})[a.id] || [];
     const ackState = a.acks || {};
     const missing = acks.filter((k) => !ackState[k.code]);
     const ppl = peopleOf(a);
@@ -643,26 +672,26 @@ function renderDialog() {
     const rows = [];
     if (a.type === 'email') {
         rows.push(['Kepada', ppl.map((p) => `<span style="font-weight:500">${esc(p.name)}</span> <span class="muted" style="font-size:12.5px">${esc(p.email)}</span>${p.kind === 'external' ? ' <span class="tag tag-amber">Eksternal</span>' : ''}`).join('<br>')]);
-        rows.push(['Dari', `${esc(S.boot.settings.operatorName || '—')} <span class="muted" style="font-size:12.5px">${esc(S.boot.settings.orgName || '')}</span>`]);
+        rows.push(['Dari', `${esc(boot().settings.operatorName || '—')} <span class="muted" style="font-size:12.5px">${esc(boot().settings.orgName || '')}</span>`]);
         rows.push(['Subjek', `<span style="font-weight:500">${esc(F.subject)}</span>`]);
     }
     else if (a.type === 'meeting') {
         rows.push(['Judul', `<span style="font-weight:500">${esc(F.title)}</span>`]);
         rows.push(['Peserta', ppl.map((p) => `${esc(p.name)}${p.members ? ` <span class="muted">(${p.members} orang)</span>` : ''} <span class="tag mono">${esc(p.timezone || '?')}</span>${p.kind === 'external' ? ' <span class="tag tag-amber">Eksternal</span>' : ''}`).join('<br>')]);
         const conv = F.conversions || [];
-        rows.push(['Waktu', `${esc(E.humanDate(F.date))}<br><span style="font-weight:500">${esc(t(F.start))}–${esc(t(F.end))} ${esc(F.timezone || S.boot.settings.defaultTimezone)}</span>${conv.length ? ` <span class="muted">= ${conv.map((c) => `${esc(t(c.to.time))} ${c.to.tz}`).join(' · ')}</span>` : ''}`]);
+        rows.push(['Waktu', `${esc(F.date ? E.humanDate(F.date) : 'Tanggal belum ada')}<br><span style="font-weight:500">${esc(t(F.start))}–${esc(t(F.end))} ${esc(F.timezone || boot().settings.defaultTimezone)}</span>${conv.length ? ` <span class="muted">= ${conv.map((c) => `${esc(t(c.to.time))} ${c.to.tz}`).join(' · ')}</span>` : ''}`]);
         rows.push(['Lokasi', esc(F.location || 'tidak disebutkan')]);
     }
     else {
         rows.push(['Tugas', `<span style="font-weight:500">${esc(F.title)}</span>`]);
         rows.push(['Pemilik', ppl.map((p) => `${esc(p.name)} <span class="muted">${esc(p.email)}</span>`).join('')]);
-        rows.push(['Tenggat', esc(E.humanDate(F.due))]);
+        rows.push(['Tenggat', esc(F.due ? E.humanDate(F.due) : 'Tenggat belum ada')]);
     }
     d.innerHTML = `
     <div class="dlg-head">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span class="mono muted" style="font-size:11.5px">${esc(S.job.id)} · ${a.id}</span><span class="tag mono">v${a.version}</span><span class="tag tag-iris">Konektor simulasi</span>${ext ? '<span class="tag tag-amber">Eksternal</span>' : ''}
+          <span class="mono muted" style="font-size:11.5px">${esc(job.id)} · ${a.id}</span><span class="tag mono">v${a.version}</span><span class="tag tag-iris">Konektor simulasi</span>${ext ? '<span class="tag tag-amber">Eksternal</span>' : ''}
         </div>
         <h2 id="dlg-title">${esc(title)}</h2>
       </div>
@@ -676,7 +705,7 @@ function renderDialog() {
         ${acks.map((k) => `<label class="chk req"><input type="checkbox" data-act="ack" data-a="${a.id}" data-code="${esc(k.code)}" ${ackState[k.code] ? 'checked' : ''} /><span><span style="font-weight:500">${esc(k.label)}</span><span class="c-amber" style="display:block;font-size:12px">Wajib dicentang</span></span></label>`).join('')}
         ${F.draftFrom && !F.contentConfirmed ? `<div class="chk">${ico('info', 15)}<span><span style="font-weight:500">Isi adalah draf</span><span class="muted" style="display:block;font-size:12px">Disusun dari ${esc(F.draftFrom)}, bukan kutipan permintaan</span></span></div>` : ''}
         ${a.findings.filter((f) => f.severity === 'info' && !['DRAFTED_CONTENT'].includes(f.code)).map((f) => `<div class="chk">${ico('info', 15)}<span class="muted" style="font-size:12.5px">${esc(f.message)}</span></div>`).join('')}
-        <div class="chk">${ico('clock', 15)}<span><span style="font-weight:500">Diteruskan setelah jeda ${S.boot.dataset.rules.undoWindowSeconds} detik</span><span class="muted" style="display:block;font-size:12px">Masih bisa diurungkan dari Antrean kirim</span></span></div>
+        <div class="chk">${ico('clock', 15)}<span><span style="font-weight:500">Diteruskan setelah jeda ${boot().dataset.rules.undoWindowSeconds} detik</span><span class="muted" style="display:block;font-size:12px">Masih bisa diurungkan dari Antrean kirim</span></span></div>
       </div>
       <p class="mono muted" style="margin:0;font-size:11.5px">sumber “${esc((a.source.quote || '').slice(0, 70))}” · ${a.source.start}–${a.source.end} · ${esc(a.fingerprint || '')}</p>
     </div>
@@ -689,7 +718,7 @@ function renderDialog() {
 }
 /* ------------------------------------------------------------ setup */
 function renderSetup(asInbox = false) {
-    const b = S.boot;
+    const b = boot();
     const rows = [
         [orgReady(), 'Atur organisasi', 'Nama PT, domain email internal, dan nama penyetuju.', '#/settings', 'Buka pengaturan'],
         [contactsReady(), 'Masukkan data kontak', 'Impor CSV/JSON kontak beserta zona waktu, atau tambah satu per satu.', '#/data', 'Buka sumber data'],
@@ -713,10 +742,10 @@ function previewHTML() {
     const d = S.draft;
     if (!d.text.trim())
         return `<p class="muted" style="margin:0;font-size:12.5px">Mulai mengetik untuk melihat aksi yang terdeteksi.</p>`;
-    const s = E.createSession(S.boot.dataset, S.boot.settings, { systemDate: S.boot.referenceDate });
+    const s = E.createSession(boot().dataset, boot().settings, { systemDate: boot().referenceDate });
     const r = E.intake(s, { text: d.text, attachments: d.attachments });
     if (!r.ok)
-        return `<p class="c-amber" style="margin:0;font-size:12.5px">${esc(r.error.message)}</p>`;
+        return `<p class="c-amber" style="margin:0;font-size:12.5px">${esc(r.error?.message || 'Permintaan belum bisa direncanakan.')}</p>`;
     const qs = s.actions.flatMap((a) => a.questions.slice(0, 1).map((q) => ({ a, q })));
     return `${s.actions.map((a) => `<div class="pv"><span class="pv-ico">${ico(TYPE_ICON[a.type], 13)}</span><div style="min-width:0"><div class="rt" style="font-size:13px">${esc(actionTitle(a))}</div><div class="toks" style="font-size:12px">${tokensFor(a)}</div></div></div>`).join('')}
     ${qs.length ? `<div class="sec-h" style="margin-top:12px">Akan ditanyakan</div>${qs.map(({ a, q }) => `<div class="sig"><span class="c-amber">${ico('clarify', 14)}</span><span>${a.id} · ${esc(q.text)}</span></div>`).join('')}` : ''}
@@ -724,7 +753,7 @@ function previewHTML() {
 }
 function renderNew() {
     const d = S.draft;
-    const sr = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const sr = speechRecognitionConstructor();
     const modeBtn = (m, label, ic = null) => `<button role="tab" type="button" data-act="mode" data-m="${m}" aria-selected="${d.mode === m}">${ic ? ico(ic, 13) : ''}${label}</button>`;
     const rec = d.mode === 'voice' ? `
     <div class="rec">
@@ -736,7 +765,7 @@ function renderNew() {
       <label class="btn" style="cursor:pointer">${ico('upload', 14)}Pilih berkas permintaan<input type="file" data-act="reqfile" accept=".txt,.md,.eml,.csv,.json,text/plain" hidden /></label>
       <span class="muted" style="font-size:12.5px">${d.sourceFile ? `Dari ${esc(d.sourceFile)} · periksa teksnya di bawah` : 'Notulen, chat ekspor, atau email (.txt, .md, .eml)'}</span>
     </div>` : '';
-    const planner = S.boot.planner.modelAvailable
+    const planner = boot().planner.modelAvailable
         ? `<span class="seg" role="group" aria-label="Planner"><button type="button" data-act="planner" data-p="rules" aria-pressed="${d.planner === 'rules'}">Aturan</button><button type="button" data-act="planner" data-p="model" aria-pressed="${d.planner === 'model'}">Model</button></span>`
         : `<span class="muted" style="font-size:12px" title="Atur BEREZZ_LLM_* di server untuk planner model">Planner: aturan</span>`;
     return `
@@ -770,16 +799,16 @@ function renderNew() {
       <aside class="rail" aria-label="Pratinjau">
         <section class="sec"><h3>Pratinjau cepat <span style="font-weight:400">· belum jadi rencana</span></h3><div id="preview">${previewHTML()}</div></section>
         <section class="sec"><h3>Konteks</h3><dl class="kv">
-          <dt>Organisasi</dt><dd>${esc(S.boot.settings.orgName || '—')}</dd>
-          <dt>Kontak</dt><dd>${S.boot.dataset.contacts.length || '<span class="c-amber">kosong</span>'}</dd>
-          <dt>Tgl acuan</dt><dd>${esc(E.humanDate(S.boot.referenceDate))}</dd>
+          <dt>Organisasi</dt><dd>${esc(boot().settings.orgName || '—')}</dd>
+          <dt>Kontak</dt><dd>${boot().dataset.contacts.length || '<span class="c-amber">kosong</span>'}</dd>
+          <dt>Tgl acuan</dt><dd>${esc(E.humanDate(boot().referenceDate))}</dd>
         </dl></section>
       </aside>
     </div>`;
 }
 let recognizer = null;
 function toggleListen() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SR = speechRecognitionConstructor();
     if (!SR)
         return;
     if (S.listening && recognizer) {
@@ -811,13 +840,13 @@ function toggleListen() {
     render();
 }
 function updatePreview() {
-    clearTimeout(previewTimer);
-    previewTimer = setTimeout(() => { const p = $('#preview'); if (p)
-        p.innerHTML = previewHTML(); }, 250);
+    if (previewTimer)
+        clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => { previewTimer = null; const p = $('#preview'); p.innerHTML = previewHTML(); }, 250);
 }
 /* ------------------------------------------------------------ queue */
 function renderQueue() {
-    const q = S.boot.queue;
+    const q = boot().queue;
     const grp = (st) => q.filter((x) => x.action.status === st);
     const head = `<div class="grid-row hd" role="row"><span></span><span>Aksi</span><span>Penerima</span><span>Konektor</span><span>Disetujui</span><span style="text-align:right">Status</span></div>`;
     const row = (x) => {
@@ -828,8 +857,10 @@ function renderQueue() {
             end = `<span class="bar" aria-hidden="true"><span data-bar="${esc(a.result.undoUntil)}" data-from="${esc(a.result.queuedAt)}"></span></span><span class="mono num" data-until="${esc(a.result.undoUntil)}" style="font-size:13px;font-weight:500"></span><button class="btn" type="button" data-act="undo" data-job="${esc(x.jobId)}" data-a="${a.id}">${ico('undo', 13)}Urungkan</button>`;
         else if (a.status === 'simulated')
             end = `<span class="mono muted" style="font-size:11.5px">${esc(a.result.ref)}</span><span class="c-green">${ico('check', 15)}</span>`;
-        else
-            end = `<span class="tag">Diurungkan di detik ${Math.round((Date.parse(a.result.undoneAt) - Date.parse(a.result.queuedAt)) / 1000)}</span>`;
+        else {
+            const seconds = a.result.undoneAt ? Math.round((Date.parse(a.result.undoneAt) - Date.parse(a.result.queuedAt)) / 1000) : 0;
+            end = `<span class="tag">Diurungkan di detik ${seconds}</span>`;
+        }
         return `<div class="grid-row" role="row">
       <span class="aico" role="cell">${ico(TYPE_ICON[a.type], 15)}</span>
       <span role="cell" style="min-width:0"><a href="#/inbox/${esc(x.jobId)}" class="cell-t" style="display:block;color:var(--text);text-decoration:none">${esc(actionTitle(a))}</a><span class="cell-s">${esc(x.jobId)} · ${a.id} · v${a.result.version}</span></span>
@@ -842,7 +873,7 @@ function renderQueue() {
     const section = (id, title, hint, list) => list.length ? `<section aria-labelledby="${id}"><div class="ghead"><h2 id="${id}">${title}</h2><span class="n">${list.length}</span>${hint ? `<span class="hint">${hint}</span>` : ''}</div><div class="box tbl-wrap" role="table" aria-labelledby="${id}">${head}${list.map(row).join('')}</div></section>` : '';
     const queued = grp('queued');
     return `
-    <header class="top"><h1>Antrean kirim</h1><span class="sub">${queued.length} aktif · jeda ${S.boot.dataset.rules.undoWindowSeconds} detik sebelum diteruskan ke konektor</span><span class="grow"></span><span class="tag tag-iris">Konektor simulasi</span></header>
+    <header class="top"><h1>Antrean kirim</h1><span class="sub">${queued.length} aktif · jeda ${boot().dataset.rules.undoWindowSeconds} detik sebelum diteruskan ke konektor</span><span class="grow"></span><span class="tag tag-iris">Konektor simulasi</span></header>
     <div class="page">
       ${q.length ? '' : `<div class="empty"><span class="empty-ico">${ico('queue', 20)}</span><h2>Antrean kosong</h2><p>Aksi muncul di sini setelah Anda menyetujuinya.</p></div>`}
       ${section('q1', 'Bisa diurungkan', 'Urungkan = tidak ada yang diteruskan', queued)}
@@ -860,26 +891,32 @@ const AUDIT_LABEL = {
 };
 const AUDIT_DOT = { injection_detected: 'var(--amber)', approve: 'var(--green)', tool_result: 'var(--text)', escalate: 'var(--red)', gate_blocked: 'var(--red)', approve_rejected: 'var(--red)', undo: 'var(--text-3)' };
 function auditDetail(e) {
-    const d = e.detail;
+    const d = Array.isArray(e.detail) ? {} : e.detail;
+    const text = (key) => String(d[key] ?? '');
+    const number = (key) => Number(d[key] ?? 0);
+    const strings = (key) => Array.isArray(d[key]) ? d[key].map(String) : [];
     switch (e.type) {
-        case 'intake': return `${d.chars} karakter · ${d.attachments?.length ? `lampiran ${d.attachments.join(', ')}` : 'tanpa lampiran'} · acuan ${d.referenceDate}`;
-        case 'injection_detected': return (d || []).map((x) => `“${String(x.quote).slice(0, 60)}” · ${x.source} baris ${x.line}`).join('; ');
-        case 'plan': return `v${d.planVersion} · ${d.actions.length} aksi · ${d.planner}`;
-        case 'review': return `${d.matched}/${d.checked} cocok · ${d.missing} hilang · ${d.added} tambahan`;
-        case 'clarification_answered': return `${d.actionId} → ${d.value}${d.version ? ` · v${d.version}` : ''}`;
-        case 'edit': return `${d.actionId} → v${d.version} · ${(d.fields || []).join(', ')}`;
-        case 'acknowledge': return `${d.actionId} · ${d.code}`;
-        case 'approve': return `${d.actionId} v${d.version} · ${d.fingerprint}`;
-        case 'queued': return `${d.actionId} · ${d.ref}`;
-        case 'tool_result': return `${d.actionId} · ${d.ref} lewat ${d.adapter}`;
-        case 'undo': return `${d.actionId} · setelah ${d.afterSeconds} detik`;
-        case 'planner_fallback': return d.reason;
-        default: return d?.reason ? `${d.actionId || ''} · ${d.reason}` : d?.code || '';
+        case 'intake': return `${number('chars')} karakter · ${strings('attachments').length ? `lampiran ${strings('attachments').join(', ')}` : 'tanpa lampiran'} · acuan ${text('referenceDate')}`;
+        case 'injection_detected': return (Array.isArray(e.detail) ? e.detail : []).map((item) => {
+            const row = item;
+            return `“${String(row.quote ?? '').slice(0, 60)}” · ${String(row.source ?? '')} baris ${String(row.line ?? '')}`;
+        }).join('; ');
+        case 'plan': return `v${number('planVersion')} · ${Array.isArray(d.actions) ? d.actions.length : 0} aksi · ${text('planner')}`;
+        case 'review': return `${number('matched')}/${number('checked')} cocok · ${number('missing')} hilang · ${number('added')} tambahan`;
+        case 'clarification_answered': return `${text('actionId')} → ${text('value')}${d.version ? ` · v${text('version')}` : ''}`;
+        case 'edit': return `${text('actionId')} → v${text('version')} · ${strings('fields').join(', ')}`;
+        case 'acknowledge': return `${text('actionId')} · ${text('code')}`;
+        case 'approve': return `${text('actionId')} v${text('version')} · ${text('fingerprint')}`;
+        case 'queued': return `${text('actionId')} · ${text('ref')}`;
+        case 'tool_result': return `${text('actionId')} · ${text('ref')} lewat ${text('adapter')}`;
+        case 'undo': return `${text('actionId')} · setelah ${number('afterSeconds')} detik`;
+        case 'planner_fallback': return text('reason');
+        default: return d.reason ? `${text('actionId')} · ${text('reason')}` : text('code');
     }
 }
 function renderHistory() {
     const q = S.histQuery.toLowerCase();
-    const jobs = S.boot.jobs.filter((j) => {
+    const jobs = boot().jobs.filter((j) => {
         if (S.histStatus === 'done' && j.group !== 'done')
             return false;
         if (S.histStatus === 'escalated' && !j.counts.escalated)
@@ -891,9 +928,9 @@ function renderHistory() {
     const byDay = new Map();
     for (const j of jobs) {
         const k = dayLabel(j.createdAt);
-        if (!byDay.has(k))
-            byDay.set(k, []);
-        byDay.get(k).push(j);
+        const dayJobs = byDay.get(k) || [];
+        dayJobs.push(j);
+        byDay.set(k, dayJobs);
     }
     const hj = S.histJob;
     const result = (j) => {
@@ -951,7 +988,7 @@ function renderHistory() {
 }
 /* ------------------------------------------------------------ data */
 function renderData() {
-    const b = S.boot;
+    const b = boot();
     const ds = b.dataset;
     const h = b.health;
     const originTag = ds.meta.origin === 'empty' ? '<span class="tag tag-amber">Kosong</span>' : ds.meta.origin === 'imported' ? '<span class="tag tag-green">Data organisasi</span>' : '<span class="tag tag-green">Diisi manual</span>';
@@ -987,8 +1024,8 @@ function renderData() {
     </div>`;
 }
 function renderDataRail() {
-    const ds = S.boot.dataset;
-    const h = S.boot.health;
+    const ds = boot().dataset;
+    const h = boot().health;
     if (S.dataSel === 'rules') {
         const r = ds.rules;
         return `<div style="padding:16px 18px 6px"><h2 style="margin:0;font-size:15px;font-weight:600">Aturan operasional</h2><p class="muted" style="margin:4px 0 0;font-size:12.5px">${esc(r.source)}</p></div>
@@ -1011,9 +1048,9 @@ function renderDataRail() {
     }
     const q = S.contactQuery.toLowerCase();
     const list = ds.contacts.filter((c) => !q || `${c.name} ${c.role || ''} ${c.city || ''} ${(c.aliases || []).join(' ')}`.toLowerCase().includes(q));
-    const kind = (c) => (c.kind || (S.boot.settings.orgDomains.some((d) => c.email.toLowerCase().endsWith(`@${d}`) || c.email.toLowerCase().endsWith(`.${d}`)) ? 'internal' : 'external'));
+    const kind = (c) => (c.kind || (boot().settings.orgDomains.some((d) => c.email.toLowerCase().endsWith(`@${d}`) || c.email.toLowerCase().endsWith(`.${d}`)) ? 'internal' : 'external'));
     return `<div style="padding:16px 18px 10px"><h2 style="margin:0;font-size:15px;font-weight:600">Kontak & zona waktu</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:12.5px">${ds.contacts.length} kontak${S.boot.settings.orgDomains.length ? ` · internal: ${esc(S.boot.settings.orgDomains.join(', '))}` : ' · <span class="c-amber">domain internal belum diatur, semua dianggap eksternal</span>'}</p></div>
+      <p class="muted" style="margin:4px 0 0;font-size:12.5px">${ds.contacts.length} kontak${boot().settings.orgDomains.length ? ` · internal: ${esc(boot().settings.orgDomains.join(', '))}` : ' · <span class="c-amber">domain internal belum diatur, semua dianggap eksternal</span>'}</p></div>
     ${h.withoutTimezone.length ? `<section class="sec"><h3>Perlu dilengkapi <span class="c-amber">${h.withoutTimezone.length}</span></h3>${h.withoutTimezone.slice(0, 6).map((c) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0"><span><b style="font-weight:500">${esc(c.name)}</b> <span class="muted">· ${esc(c.role || c.email)}</span></span><span class="tag tag-amber">zona ?</span></div>`).join('')}</section>` : ''}
     ${h.duplicateFirstNames.length ? `<section class="sec"><h3>Nama ganda <span>${h.duplicateFirstNames.length}</span></h3><div style="display:flex;flex-wrap:wrap;gap:6px">${h.duplicateFirstNames.map((d) => `<span class="tag">${esc(d.name[0].toUpperCase() + d.name.slice(1))} ×${d.n}</span>`).join('')}</div><p class="muted" style="margin:8px 0 0;font-size:12px">Nama ini selalu memicu pertanyaan “yang mana?”.</p></section>` : ''}
     <section class="sec"><h3>Daftar</h3>
@@ -1036,7 +1073,7 @@ function renderDataRail() {
 }
 /* ------------------------------------------------------------ settings */
 function renderSettings() {
-    const s = S.boot.settings;
+    const s = boot().settings;
     return `
     <header class="top"><h1>Pengaturan</h1><span class="sub">Berlaku untuk workspace ini</span></header>
     <div class="page" style="max-width:760px">
@@ -1060,7 +1097,7 @@ function renderSettings() {
         <section><div class="ghead"><h2>Planner</h2><span class="hint">Siapa yang memecah permintaan menjadi aksi</span></div>
           <div class="box" style="padding:14px;display:flex;flex-direction:column;gap:8px;font-size:13px">
             <label style="display:flex;gap:8px;align-items:flex-start"><input type="radio" name="planner" value="rules" ${s.planner !== 'model' ? 'checked' : ''} /><span><b style="font-weight:500">Aturan Berezz</b><span class="muted" style="display:block;font-size:12.5px">Deterministik, tanpa model. Selalu tersedia.</span></span></label>
-            <label style="display:flex;gap:8px;align-items:flex-start"><input type="radio" name="planner" value="model" ${s.planner === 'model' ? 'checked' : ''} ${S.boot.planner.modelAvailable ? '' : 'disabled'} /><span><b style="font-weight:500">Model bahasa${S.boot.planner.model ? ` (${esc(S.boot.planner.model)})` : ''}</b><span class="muted" style="display:block;font-size:12.5px">${S.boot.planner.modelAvailable ? 'Model mengusulkan; Berezz tetap menurunkan penerima, tanggal, dan jam dari kutipan.' : 'Belum dikonfigurasi. Atur BEREZZ_LLM_BASE_URL, BEREZZ_LLM_API_KEY, BEREZZ_LLM_MODEL saat menjalankan server.'}</span></span></label>
+            <label style="display:flex;gap:8px;align-items:flex-start"><input type="radio" name="planner" value="model" ${s.planner === 'model' ? 'checked' : ''} ${boot().planner.modelAvailable ? '' : 'disabled'} /><span><b style="font-weight:500">Model bahasa${boot().planner.model ? ` (${esc(boot().planner.model)})` : ''}</b><span class="muted" style="display:block;font-size:12.5px">${boot().planner.modelAvailable ? 'Model mengusulkan; Berezz tetap menurunkan penerima, tanggal, dan jam dari kutipan.' : 'Belum dikonfigurasi. Atur BEREZZ_LLM_BASE_URL, BEREZZ_LLM_API_KEY, BEREZZ_LLM_MODEL saat menjalankan server.'}</span></span></label>
             <p class="muted" style="margin:4px 0 0;font-size:12.5px">${ico('agent', 13)} Agent WorkBuddy bisa mengusulkan rencana lewat MCP kapan saja; lihat <code>workbuddy/README.md</code>.</p>
           </div></section>
         <div style="display:flex;gap:8px"><button class="btn btn-primary btn-lg" type="submit">Simpan pengaturan</button></div>
@@ -1074,9 +1111,10 @@ function renderSettings() {
 function render() {
     if (!S.boot)
         return;
-    if (!S.boot.storage?.writable && S.boot.storage?.error && !S.storageWarningShown) {
+    const storage = boot().storage;
+    if (!storage?.writable && storage?.error && !S.storageWarningShown) {
         S.storageWarningShown = true;
-        toast(`Penyimpanan belum aman: ${S.boot.storage.error}`, 'err');
+        toast(`Penyimpanan belum aman: ${storage.error}`, 'err');
     }
     renderSide();
     const r = S.route;
@@ -1096,12 +1134,18 @@ function render() {
 function tick() {
     const now = Date.now();
     document.querySelectorAll('[data-until]').forEach((el) => {
-        const left = Math.max(0, Math.ceil((Date.parse(el.dataset.until) - now) / 1000));
+        const until = el.dataset.until;
+        if (!until)
+            return;
+        const left = Math.max(0, Math.ceil((Date.parse(until) - now) / 1000));
         el.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
         el.setAttribute('aria-label', `${left} detik tersisa untuk mengurungkan`);
     });
     document.querySelectorAll('[data-bar]').forEach((el) => {
-        const a = Date.parse(el.dataset.from), b = Date.parse(el.dataset.bar);
+        const from = el.dataset.from, until = el.dataset.bar;
+        if (!from || !until)
+            return;
+        const a = Date.parse(from), b = Date.parse(until);
         el.style.width = `${Math.max(0, Math.min(100, ((b - now) / (b - a)) * 100))}%`;
     });
 }
@@ -1110,13 +1154,13 @@ let lastFullSync = Date.now();
 async function syncIfQueued() {
     if (S.busy || document.hidden)
         return;
-    const due = S.boot?.queue.some((q) => q.action.status === 'queued' && Date.parse(q.action.result.undoUntil) <= Date.now());
+    const due = boot().queue.some((q) => q.action.status === 'queued' && Date.parse(q.action.result.undoUntil) <= Date.now());
     if (!due && Date.now() - lastFullSync < 5000)
         return;
     lastFullSync = Date.now();
     const before = JSON.stringify(S.boot?.jobs.map((j) => [j.id, j.updatedAt]));
     await loadBoot();
-    if (!due && JSON.stringify(S.boot.jobs.map((j) => [j.id, j.updatedAt])) === before)
+    if (!due && JSON.stringify(boot().jobs.map((j) => [j.id, j.updatedAt])) === before)
         return;
     if (S.job)
         await loadJob(S.job.id);
@@ -1134,7 +1178,9 @@ async function afterJob(job) {
     render();
 }
 async function actionCall(actionId, verb, body = {}, jobId = S.job?.id) {
-    const out = await api(`/api/jobs/${encodeURIComponent(jobId)}/actions/${actionId}/${verb}`, { method: 'POST', body });
+    if (!actionId || !jobId)
+        throw new Error('Aksi atau job tidak tersedia. Muat ulang sebelum mencoba lagi.');
+    const out = await api(`/api/jobs/${encodeURIComponent(jobId)}/actions/${encodeURIComponent(actionId)}/${encodeURIComponent(verb)}`, { method: 'POST', body });
     if (out.contactWarning)
         toast(out.contactWarning);
     if (S.job && S.job.id === jobId)
@@ -1157,7 +1203,7 @@ document.addEventListener('click', async (ev) => {
     if (!el || el.tagName === 'INPUT')
         return;
     const act = el.dataset.act;
-    const a = el.dataset.a;
+    const a = el.dataset.a || '';
     const key = S.job ? `${S.job.id}:${a}` : '';
     switch (act) {
         case 'theme': {
@@ -1178,7 +1224,7 @@ document.addEventListener('click', async (ev) => {
             render();
             break;
         case 'answer':
-            await run(async () => { await actionCall(a, 'answer', { questionId: el.dataset.q, value: el.dataset.v }); render(); });
+            await run(async () => { await actionCall(a, 'answer', { questionId: el.dataset.q || '', value: el.dataset.v || '' }); render(); });
             break;
         case 'newcontact':
             S.newContactFor = key;
@@ -1204,14 +1250,20 @@ document.addEventListener('click', async (ev) => {
             $('#dlg').close();
             break;
         case 'approve':
-            await run(async () => {
-                await actionCall(a, 'approve', { version: Number(el.dataset.v) });
-                $('#dlg').close();
-                render();
-                const jobId = S.job.id;
-                toast(`${a} disetujui dan masuk antrean. Diteruskan dalam ${S.boot.dataset.rules.undoWindowSeconds} detik.`, 'ok', { label: 'Urungkan', run: () => run(async () => { await actionCall(a, 'undo', {}, jobId); render(); }, 'Diurungkan. Tidak ada yang diteruskan.') });
-            });
-            break;
+            {
+                const jobId = S.job?.id || '';
+                if (!jobId) {
+                    toast('Job sudah tidak tersedia; muat ulang halaman.', 'err');
+                    break;
+                }
+                await run(async () => {
+                    await actionCall(a, 'approve', { version: Number(el.dataset.v) });
+                    $('#dlg').close();
+                    render();
+                    toast(`${a} disetujui dan masuk antrean. Diteruskan dalam ${boot().dataset.rules.undoWindowSeconds} detik.`, 'ok', { label: 'Urungkan', run: () => run(async () => { await actionCall(a, 'undo', {}, jobId); render(); }, 'Diurungkan. Tidak ada yang diteruskan.') });
+                });
+                break;
+            }
         case 'cancel':
             if (!confirm(`Batalkan ${a}? Aksi ini tidak akan dijalankan.`))
                 return;
@@ -1221,13 +1273,13 @@ document.addEventListener('click', async (ev) => {
             await run(async () => { await actionCall(a, 'undo', {}, el.dataset.job || S.job?.id); render(); }, 'Diurungkan. Tidak ada yang diteruskan.');
             break;
         case 'mode':
-            S.draft.mode = el.dataset.m;
+            S.draft.mode = el.dataset.m || 'text';
             if (el.dataset.m === 'voice')
                 S.draft.channel = 'Voice note';
             render();
             break;
         case 'planner':
-            S.draft.planner = el.dataset.p;
+            S.draft.planner = el.dataset.p || 'rules';
             render();
             break;
         case 'listen':
@@ -1238,14 +1290,14 @@ document.addEventListener('click', async (ev) => {
             render();
             break;
         case 'hist-status':
-            S.histStatus = el.dataset.s;
+            S.histStatus = el.dataset.s || 'all';
             render();
             break;
         case 'hist-open':
-            go(`#/history/${el.dataset.job}`);
+            go(`#/history/${el.dataset.job || ''}`);
             break;
         case 'data-sel':
-            S.dataSel = el.dataset.k;
+            S.dataSel = el.dataset.k || 'contacts';
             render();
             break;
         case 'clear-data':
@@ -1306,11 +1358,14 @@ document.addEventListener('change', async (ev) => {
         S.draft.channel = el.value;
     if (el.dataset.act === 'ack') {
         const job = S.job;
-        await run(async () => { await actionCall(el.dataset.a, 'ack', { code: el.dataset.code, value: el.checked }, job.id); renderDialog(); });
+        if (!job)
+            return;
+        await run(async () => { await actionCall(el.dataset.a || '', 'ack', { code: el.dataset.code || '', value: el.checked }, job.id); renderDialog(); });
     }
-    if (el.dataset.act === 'attach' && el.files?.length) {
+    const files = el.files;
+    if (el.dataset.act === 'attach' && files?.length) {
         await run(async () => {
-            for (const f of Array.from(el.files))
+            for (const f of Array.from(files))
                 S.draft.attachments.push({ name: f.name, text: await readFile(f) });
             render();
         });
@@ -1331,7 +1386,7 @@ document.addEventListener('change', async (ev) => {
                 render();
             }
             catch (e) {
-                throw new Error(`Impor gagal: ${e.message}`);
+                throw new Error(`Impor gagal: ${errorMessage(e)}`);
             }
         });
     }
@@ -1345,16 +1400,16 @@ document.addEventListener('submit', async (ev) => {
     const fd = new FormData(form);
     const v = (k) => String(fd.get(k) ?? '').trim();
     if (kind === 'answer')
-        await run(async () => { await actionCall(form.dataset.a, 'answer', { questionId: form.dataset.q, value: v('value') }); render(); });
+        await run(async () => { await actionCall(form.dataset.a || '', 'answer', { questionId: form.dataset.q || '', value: v('value') }); render(); });
     if (kind === 'newcontact') {
         await run(async () => {
-            await actionCall(form.dataset.a, 'answer', { questionId: form.dataset.q, newContact: { name: v('name'), email: v('email'), timezone: v('timezone'), role: v('role'), kind: v('kind') } });
+            await actionCall(form.dataset.a || '', 'answer', { questionId: form.dataset.q || '', newContact: { name: v('name'), email: v('email'), timezone: v('timezone'), role: v('role'), kind: v('kind') } });
             S.newContactFor = null;
             render();
         }, 'Kontak disimpan ke data organisasi.');
     }
     if (kind === 'edit') {
-        const a = form.dataset.a;
+        const a = form.dataset.a || '';
         const patch = {};
         for (const [k, val] of fd.entries())
             if (!['toIds', 'participantIds'].includes(k))
@@ -1371,7 +1426,7 @@ document.addEventListener('submit', async (ev) => {
         S.draft.requester = v('requester');
         S.draft.channel = v('channel');
         await run(async () => {
-            const out = await api('/api/jobs', { method: 'POST', body: { text, requester: S.draft.requester, channel: S.draft.channel, attachments: S.draft.attachments, planner: S.draft.planner } }).catch((e) => { throw new Error(e.data?.error?.message || e.message); });
+            const out = await api('/api/jobs', { method: 'POST', body: { text, requester: S.draft.requester, channel: S.draft.channel, attachments: S.draft.attachments, planner: S.draft.planner } });
             S.draft = { mode: 'text', text: '', requester: '', channel: 'Chat tim', attachments: [], planner: S.draft.planner, sourceFile: '' };
             S.job = out.job;
             await loadBoot();
@@ -1407,11 +1462,12 @@ setInterval(() => { syncIfQueued().catch(() => { }); }, 1500);
         await loadBoot();
     }
     catch (e) {
-        $('#view').innerHTML = `<div class="empty"><span class="empty-ico">${ico('alertCircle', 20)}</span><h2>Server Berezz tidak terjangkau</h2><p>Jalankan <code>npm start</code> di folder proyek, lalu muat ulang halaman ini. (${esc(e.message)})</p></div>`;
+        $('#view').innerHTML = `<div class="empty"><span class="empty-ico">${ico('alertCircle', 20)}</span><h2>Server Berezz tidak terjangkau</h2><p>Jalankan <code>npm start</code> di folder proyek, lalu muat ulang halaman ini. (${esc(errorMessage(e))})</p></div>`;
         return;
     }
-    if (!location.hash && (!orgReady() || !S.boot.jobs.length))
+    if (!location.hash && (!orgReady() || !boot().jobs.length))
         location.hash = '#/setup';
     await onRoute();
 })();
-window.Berezz = { get state() { return S; }, api, engine: E };
+const debugWindow = window;
+debugWindow.Berezz = { get state() { return S; }, api, engine: E };
