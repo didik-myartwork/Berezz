@@ -22,8 +22,9 @@ const S = {
     editing: null,
     newContactFor: null,
     dlg: null,
-    dataSel: 'contacts',
     contactQuery: '',
+    contactFilter: 'all',
+    contactSel: null,
     histQuery: '',
     histStatus: 'all',
     draft: { mode: 'text', text: '', requester: '', channel: 'Chat tim', attachments: [], planner: 'rules', sourceFile: '' },
@@ -149,6 +150,7 @@ function parseRoute() {
         case 'new':
         case 'queue':
         case 'data':
+        case 'contacts':
         case 'settings':
         case 'setup':
         case 'guide': return { name, id: null, filter: null };
@@ -273,6 +275,22 @@ function peopleOf(a) {
     return a.fields.owner ? [a.fields.owner] : [];
 }
 /* ------------------------------------------------------------ sidebar */
+/** One icon per intake channel so the sidebar entries stay distinguishable. */
+function channelIcon(ch) {
+    if (/voice/i.test(ch))
+        return 'mic';
+    if (/notulen/i.test(ch))
+        return 'note';
+    if (/email/i.test(ch))
+        return 'mail';
+    if (/workbuddy/i.test(ch))
+        return 'agent';
+    if (/teks|tempel/i.test(ch))
+        return 'text';
+    if (/berkas|unggah/i.test(ch))
+        return 'file';
+    return 'chat';
+}
 function renderSide() {
     const b = boot();
     const jobs = b.jobs;
@@ -280,7 +298,8 @@ function renderSide() {
     const cur = (cond) => (cond ? 'aria-current="page"' : '');
     const mine = jobs.filter((j) => j.group === 'mine').length;
     const queued = b.queue.filter((q) => q.action.status === 'queued').length;
-    const dataWarn = !contactsReady() || b.dataset.holidays === null || b.dataset.rules.isDefault;
+    const dataWarn = b.dataset.holidays === null || b.dataset.rules.isDefault;
+    const contactWarn = !contactsReady() || b.dataset.contacts.some((c) => !c.timezone);
     const org = b.settings.orgName;
     const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
     const side = $('#side');
@@ -304,11 +323,12 @@ function renderSide() {
     </div>
     ${channels().length ? `<div>
       <p class="nav-label">Saluran masuk</p>
-      <div class="nav">${channels().map(([ch, n]) => `<a href="#/channel/${encodeURIComponent(ch)}" ${cur(r.filter === `ch:${ch}`)}>${ico(ch === 'Voice note' ? 'mic' : /notulen/i.test(ch) ? 'note' : /email/i.test(ch) ? 'mail' : /workbuddy/i.test(ch) ? 'agent' : 'chat', 16)}<span class="lbl">${esc(ch)}</span><span class="cnt">${n}</span></a>`).join('')}</div>
+      <div class="nav">${channels().map(([ch, n]) => `<a href="#/channel/${encodeURIComponent(ch)}" ${cur(r.filter === `ch:${ch}`)}>${ico(channelIcon(ch), 16)}<span class="lbl">${esc(ch)}</span><span class="cnt">${n}</span></a>`).join('')}</div>
     </div>` : ''}
     <div>
       <p class="nav-label">Kontrol</p>
       <div class="nav">
+        <a href="#/contacts" ${cur(r.name === 'contacts')}>${ico('users', 16)}<span class="lbl">Kontak</span>${contactWarn ? '<span class="warn-dot" title="Kontak kosong atau ada yang belum punya zona waktu"></span>' : `<span class="cnt">${b.dataset.contacts.length}</span>`}</a>
         <a href="#/data" ${cur(r.name === 'data')}>${ico('database', 16)}<span class="lbl">Sumber data</span>${dataWarn ? '<span class="warn-dot" title="Ada data yang belum lengkap"></span>' : ''}</a>
         <a href="#/history" >${ico('audit', 16)}<span class="lbl">Jejak audit</span></a>
         <a href="#/guide" ${cur(r.name === 'guide')}>${ico('book', 16)}<span class="lbl">Panduan</span></a>
@@ -377,6 +397,11 @@ function renderJob(job) {
         ['queue', 'Di antrean kirim', `Masih bisa diurungkan sebelum hitungan ${boot().dataset.rules.undoWindowSeconds} detik habis`, acts.filter((a) => a.status === 'queued')],
         ['done', 'Selesai', '', acts.filter((a) => ['simulated', 'undone', 'cancelled'].includes(a.status))],
     ];
+    // Security and reviewer problems must be visible next to the actions, not only in the side panel.
+    const alerts = [
+        ...s.findingsGlobal.filter((f) => f.code === 'INJECTION_DETECTED').map((f) => `<b>Instruksi tersisip diabaikan</b>: “${esc((f.quote || '').slice(0, 90))}”${f.source ? ` · ${esc(f.source)}${f.line ? ` baris ${f.line}` : ''}` : ''}`),
+        ...(s.review?.findings || []).filter((f) => f.severity === 'blocking').map((f) => `<b>Reviewer kedua</b>: ${esc(f.message)}`),
+    ];
     const stTag = job.counts.escalated ? ['Butuh keputusan', 'tag-red'] : job.counts.answer ? ['Perlu jawaban', 'tag-amber'] : job.counts.approve ? ['Menunggu persetujuan', 'tag-iris'] : job.counts.queued ? ['Di antrean', ''] : ['Selesai', 'tag-green'];
     return `
     <header class="dhead">
@@ -400,6 +425,7 @@ function renderJob(job) {
     </header>
     <div class="split">
       <div class="page">
+        ${alerts.length ? `<div class="note-warn">${ico('shieldBlock', 14)}<span>${alerts.join('<br>')}</span></div>` : ''}
         ${groups.filter((g) => g[3].length).map(([k, label, hint, list]) => `
           <section aria-labelledby="g-${k}">
             <div class="ghead"><h3 id="g-${k}">${label}</h3><span class="n">${list.length}</span>${hint ? `<span class="hint">${hint}</span>` : ''}</div>
@@ -756,7 +782,7 @@ function renderSetup(asInbox = false) {
     const b = boot();
     const rows = [
         [orgReady(), 'Atur organisasi', 'Nama PT, domain email internal, dan nama penyetuju.', '#/settings', 'Buka pengaturan'],
-        [contactsReady(), 'Masukkan data kontak', 'Impor CSV/JSON kontak beserta zona waktu, atau tambah satu per satu.', '#/data', 'Buka sumber data'],
+        [contactsReady(), 'Masukkan data kontak', 'Impor CSV/JSON kontak beserta zona waktu, atau tambah satu per satu.', '#/contacts', 'Buka kontak'],
         [!b.dataset.rules.isDefault && b.dataset.holidays !== null, 'Aturan & kalender libur (disarankan)', 'Tanpa ini Berezz memakai aturan bawaan dan meminta konfirmasi untuk setiap tanggal.', '#/data', 'Impor'],
         [b.jobs.length > 0, 'Buat job pertama', 'Tempel chat atau notulen, unggah berkas, atau rekam voice note.', '#/new', 'Job baru'],
     ];
@@ -826,7 +852,7 @@ function renderNew() {
     </header>
     <div class="split">
       <div class="page">
-        ${!contactsReady() ? `<div class="note-warn">${ico('info', 14)}<span>Data kontak masih kosong, jadi setiap nama akan ditanyakan. <a href="#/data">Impor kontak</a> agar penerima dikenali otomatis.</span></div>` : ''}
+        ${!contactsReady() ? `<div class="note-warn">${ico('info', 14)}<span>Data kontak masih kosong, jadi setiap nama akan ditanyakan. <a href="#/contacts">Isi kontak</a> agar penerima dikenali otomatis.</span></div>` : ''}
         <form class="nj" data-form="newjob">
           <section class="nj-step" aria-labelledby="nj-1">
             <h2 id="nj-1"><span class="nj-n">1</span>Dari mana permintaannya?</h2>
@@ -1074,106 +1100,162 @@ function renderData() {
     const b = boot();
     const ds = b.dataset;
     const h = b.health;
+    const r = ds.rules;
     const originTag = ds.meta.origin === 'empty' ? '<span class="tag tag-amber">Kosong</span>' : ds.meta.origin === 'imported' ? '<span class="tag tag-green">Data organisasi</span>' : '<span class="tag tag-green">Diisi manual</span>';
-    const row = (key, ic, title, toks, tag, extra = '') => `
-    <button class="row" type="button" data-act="data-sel" data-k="${key}" ${S.dataSel === key ? 'aria-current="true"' : ''}>
-      <span class="aico">${ico(ic, 15)}</span>
-      <span style="min-width:0"><span class="rt">${title}</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">${toks}</span></span>
-      <span class="end">${extra}${tag}</span>
-    </button>`;
+    const list = ds.holidays || [];
+    const years = [...new Set(list.map((x) => x.date.slice(0, 4)))];
     return `
     <header class="top"><h1>Sumber data</h1>${originTag}<span class="sub">${ds.meta.fileName ? `${esc(ds.meta.fileName)} · diimpor ${esc(dayLabel(ds.meta.importedAt))} ${esc(hhmm(ds.meta.importedAt))}` : 'Belum ada berkas diimpor'}</span><span class="grow"></span>
       <a class="btn btn-ghost" href="/api/template" download="berezz-templat-dataset.json">Unduh templat</a>
       <label class="btn btn-primary" style="cursor:pointer">${ico('fileImport', 14)}Impor dataset<input type="file" data-act="import" accept=".json,.csv,application/json,text/csv" hidden /></label>
     </header>
-    <div class="split">
-      <div class="page">
-        <section><div class="ghead"><h2>Data organisasi</h2><span class="hint">Berezz hanya membaca sumber di sini</span></div>
-          <div class="box row-list">
-            ${row('contacts', 'users', 'Kontak & zona waktu', ds.contacts.length ? `<span>${h.contacts} kontak</span>${h.duplicateFirstNames.length ? `<span>${h.duplicateFirstNames.length} nama ganda</span>` : ''}${h.withoutTimezone.length ? `<span class="c-amber">${h.withoutTimezone.length} tanpa zona waktu</span>` : ''}` : '<span class="c-amber">Kosong · setiap nama akan ditanyakan</span>', ds.contacts.length ? '<span class="tag tag-green">Terisi</span>' : '<span class="tag tag-amber">Kosong</span>')}
-            ${row('rules', 'shield', 'Aturan operasional', `<span>${esc(t(ds.rules.officeHours.start))}–${esc(t(ds.rules.officeHours.end))} lokal</span><span>Salat Jumat ${esc(t(ds.rules.fridayPrayer.start))}–${esc(t(ds.rules.fridayPrayer.end))}</span><span>Maks ${ds.rules.maxClarificationRounds} putaran</span><span>Jeda ${ds.rules.undoWindowSeconds} dtk</span>`, ds.rules.isDefault ? '<span class="tag tag-amber">Aturan bawaan</span>' : '<span class="tag tag-green">SOP</span>', ds.rules.isDefault ? '' : `<span class="mono muted" style="font-size:11.5px">${esc(ds.rules.source)}</span>`)}
-            ${row('holidays', 'calendar', 'Kalender libur', ds.holidays === null ? '<span class="c-amber">Belum diisi · klik untuk menambah tanggal</span>' : `<span>${ds.holidays.length} tanggal</span>`, ds.holidays === null ? '<span class="tag tag-amber">Belum diisi</span>' : '<span class="tag tag-green">Terisi</span>')}
-            ${row('documents', 'file', 'Dokumen & lampiran', '<span>Dilampirkan per job · selalu dibaca sebagai data</span>', '<span class="tag">Dilampirkan per job</span>')}
+    <div class="page data-page">
+      <section><div class="ghead"><h2>Kontak</h2><span class="hint">Dikelola di halaman Kontak</span></div>
+        <div class="box row-list">
+          <a class="row" href="#/contacts"><span class="aico">${ico('users', 15)}</span>
+            <span style="min-width:0"><span class="rt">${ds.contacts.length ? `${h.contacts} kontak` : 'Belum ada kontak'}</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">${ds.contacts.length ? `${h.withoutTimezone.length ? `<span class="c-amber">${h.withoutTimezone.length} tanpa zona waktu</span>` : '<span>Semua punya zona waktu</span>'}${h.duplicateFirstNames.length ? `<span>${h.duplicateFirstNames.length} nama ganda</span>` : ''}` : '<span class="c-amber">Setiap nama di permintaan akan ditanyakan</span>'}</span></span>
+            <span class="end">${ds.contacts.length ? '<span class="tag tag-green">Terisi</span>' : '<span class="tag tag-amber">Kosong</span>'}${ico('arrowRight', 14)}</span>
+          </a>
+        </div>
+      </section>
+
+      <section id="d-rules"><div class="ghead"><h2>Aturan operasional</h2>${r.isDefault ? '<span class="tag tag-amber">Aturan bawaan</span>' : '<span class="tag tag-green">SOP</span>'}<span class="hint">${esc(r.source)}</span></div>
+        <div class="box">
+          <dl class="rules">
+            <div><dt>Jam kerja</dt><dd>${esc(t(r.officeHours.start))}–${esc(t(r.officeHours.end))} waktu lokal</dd></div>
+            <div><dt>Hari kerja</dt><dd>${r.officeHours.weekdays.map((d) => E.DATE_ID[d]).join(', ')}</dd></div>
+            <div><dt>Salat Jumat</dt><dd>Tidak ada rapat ${esc(t(r.fridayPrayer.start))}–${esc(t(r.fridayPrayer.end))}</dd></div>
+            <div><dt>Durasi rapat</dt><dd>${r.meetingDefaultMinutes} menit bila tidak disebut</dd></div>
+            <div><dt>Pertanyaan</dt><dd>Maks ${r.maxClarificationRounds} kali, lalu butuh keputusan</dd></div>
+            <div><dt>Jeda urungkan</dt><dd>${r.undoWindowSeconds} detik</dd></div>
+          </dl>
+          ${r.isDefault ? `<p class="box-foot">Ini aturan bawaan Berezz. Impor SOP organisasi (bagian <code>rules</code> di templat) agar setiap temuan menyebut sumber yang benar.</p>` : ''}
+        </div>
+      </section>
+
+      <section id="d-holidays"><div class="ghead"><h2>Kalender libur</h2><span class="n">${list.length}</span><span class="hint">${ds.holidays === null ? 'Selama kosong, setiap rapat dan tenggat minta dipastikan bukan hari libur' : 'Rapat atau tenggat di tanggal ini akan ditandai'}</span></div>
+        <div class="box">
+          <form data-form="holiday-one" class="hol-add">
+            ${field('Tanggal', (l) => datePicker({ name: 'date', value: '', labelledBy: l, placeholder: 'Pilih tanggal' }))}
+            <label class="field"><span>Nama hari libur</span><input class="input" name="name" placeholder="mis. Hari Raya Natal" /></label>
+            <button class="btn btn-primary" type="submit">${ico('add', 14)}Tambah</button>
+          </form>
+          <details class="hol-paste">
+            <summary>${ico('chevDown', 14)}Tempel banyak sekaligus</summary>
+            <form data-form="holiday-list">
+              <label class="sr-only" for="hol-text">Daftar hari libur, satu per baris</label>
+              <textarea id="hol-text" class="textarea" name="text" rows="5" placeholder="Satu tanggal per baris, contoh:\n2026-12-25 Hari Raya Natal\n24/12/2026 Cuti bersama Natal\n1 Januari 2027 Tahun Baru Masehi"></textarea>
+              <small class="muted">Salin dari daftar libur nasional dan cuti bersama, atau dari kolom Excel. Format yang dikenali: 2026-12-25, 25/12/2026, 25 Desember 2026. Tanggal yang sudah ada diperbarui, bukan digandakan.</small>
+              <button class="btn" type="submit">Tambahkan semua</button>
+            </form>
+          </details>
+          <div class="hol-list">
+            ${list.length ? years.map((y) => `<div class="hol-year">${y}</div>${list.filter((x) => x.date.startsWith(y)).map((x) => `<div class="hol-row"><span class="hol-date">${esc(E.shortDate(x.date))}</span><span class="hol-name">${esc(x.name)}</span><button class="btn btn-ghost btn-icon" type="button" data-act="hol-del" data-date="${esc(x.date)}" aria-label="Hapus ${esc(x.name)} ${esc(x.date)}">${ico('cancel', 13)}</button></div>`).join('')}`).join('') : '<p class="muted" style="margin:0;font-size:13px">Belum ada tanggal.</p>'}
           </div>
-        </section>
-        <section><div class="ghead"><h2>Aplikasi tujuan</h2><span class="hint">Mock · hanya menerima aksi yang sudah disetujui</span></div>
-          <div class="box row-list">
-            ${['email', 'meeting', 'task'].map((t) => `<div class="row"><span class="aico">${appIcon(t, 16)}</span><span><span class="rt">${CONNECTOR[t].app}</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">${CONNECTOR[t].kind} · ${CONNECTOR[t].none}</span></span><span class="end"><span class="tag tag-green">Terhubung <span class="mock">· mock</span></span></span></div>`).join('')}
-            <div class="row"><span class="aico">${ico('agent', 15)}</span><span><span class="rt">Agent WorkBuddy (MCP)</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">Boleh membuat job & mengusulkan rencana · tidak bisa menyetujui</span></span><span class="tag">Hanya mengusulkan</span></div>
-          </div>
-        </section>
-      </div>
-      <aside class="rail" aria-label="Rincian sumber">${renderDataRail()}</aside>
+        </div>
+      </section>
+
+      <section><div class="ghead"><h2>Dokumen & lampiran</h2><span class="hint">Dilampirkan per job</span></div>
+        <div class="box row-list"><div class="row"><span class="aico">${ico('file', 15)}</span><span><span class="rt">Notulen, ekspor chat, email</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">Hanya dipakai sebagai konteks dan kutipan · baris yang menyuruh agent ditandai dan diabaikan</span></span><span class="end"></span></div></div>
+      </section>
+
+      <section><div class="ghead"><h2>Aplikasi tujuan</h2><span class="hint">Mock · hanya menerima aksi yang sudah disetujui</span></div>
+        <div class="box row-list">
+          ${['email', 'meeting', 'task'].map((t) => `<div class="row"><span class="aico">${appIcon(t, 16)}</span><span><span class="rt">${CONNECTOR[t].app}</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">${CONNECTOR[t].kind} · ${CONNECTOR[t].none}</span></span><span class="end"><span class="tag tag-green">Terhubung <span class="mock">· mock</span></span></span></div>`).join('')}
+          <div class="row"><span class="aico">${ico('agent', 15)}</span><span><span class="rt">Agent WorkBuddy (MCP)</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">Boleh membuat job & mengusulkan rencana · tidak bisa menyetujui</span></span><span class="tag">Hanya mengusulkan</span></div>
+        </div>
+      </section>
+      ${ds.meta.origin !== 'empty' ? '<div><button class="btn btn-ghost btn-danger" type="button" data-act="clear-data">Kosongkan data organisasi</button></div>' : ''}
     </div>`;
 }
-function renderDataRail() {
-    const ds = boot().dataset;
-    const h = boot().health;
-    if (S.dataSel === 'rules') {
-        const r = ds.rules;
-        return `<div style="padding:16px 18px 6px"><h2 style="margin:0;font-size:15px;font-weight:600">Aturan operasional</h2><p class="muted" style="margin:4px 0 0;font-size:12.5px">${esc(r.source)}</p></div>
-      <section class="sec"><dl class="kv">
-        <dt>Jam kerja</dt><dd>${esc(t(r.officeHours.start))}–${esc(t(r.officeHours.end))} waktu lokal</dd>
-        <dt>Hari kerja</dt><dd>${r.officeHours.weekdays.map((d) => E.DATE_ID[d]).join(', ')}</dd>
-        <dt>Salat Jumat</dt><dd>Tidak ada rapat ${esc(t(r.fridayPrayer.start))}–${esc(t(r.fridayPrayer.end))}</dd>
-        <dt>Durasi rapat</dt><dd>${r.meetingDefaultMinutes} menit (bila tidak disebut)</dd>
-        <dt>Klarifikasi</dt><dd>Maks ${r.maxClarificationRounds} putaran, lalu eskalasi</dd>
-        <dt>Jeda kirim</dt><dd>${r.undoWindowSeconds} detik</dd>
-      </dl>${r.isDefault ? '<p class="c-amber" style="font-size:12.5px;margin:12px 0 0">Ini aturan bawaan. Impor SOP organisasi (bagian <code>rules</code> di templat) agar setiap temuan menyebut sumber yang benar.</p>' : ''}</section>`;
-    }
-    if (S.dataSel === 'holidays') {
-        const list = ds.holidays || [];
-        const years = [...new Set(list.map((x) => x.date.slice(0, 4)))];
-        return `<div style="padding:16px 18px 6px">
-        <h2 style="margin:0;font-size:15px;font-weight:600">Kalender libur</h2>
-        <p class="muted" style="margin:4px 0 0;font-size:12.5px">${ds.holidays === null ? 'Belum diisi. Selama kosong, setiap rapat dan tenggat minta dicentang "sudah dipastikan bukan hari libur".' : `${list.length} tanggal. Rapat pada tanggal libur meminta Anda memilih usulan slot bila tersedia; tenggat pada tanggal libur perlu dikonfirmasi.`}</p>
-      </div>
-      <section class="sec"><h3>Tambah satu tanggal</h3>
-        <form data-form="holiday-one" class="hol-one">
-          ${field('Tanggal', (l) => datePicker({ name: 'date', value: '', labelledBy: l, placeholder: 'Pilih tanggal' }))}
-          <label class="field"><span>Nama</span><input class="input" name="name" placeholder="mis. Hari Raya Natal" /></label>
-          <button class="btn btn-primary" type="submit">Tambah</button>
-        </form>
-      </section>
-      <section class="sec"><h3>Tempel banyak sekaligus</h3>
-        <form data-form="holiday-list" style="display:flex;flex-direction:column;gap:8px">
-          <label class="sr-only" for="hol-text">Daftar hari libur, satu per baris</label>
-          <textarea id="hol-text" class="textarea" name="text" rows="5" placeholder="Satu tanggal per baris, contoh:\n2026-12-25 Hari Raya Natal\n24/12/2026 Cuti bersama Natal\n1 Januari 2027 Tahun Baru Masehi"></textarea>
-          <small class="muted" style="font-size:12px;line-height:1.5">Bisa disalin dari daftar libur nasional dan cuti bersama (SKB menteri) atau dari kolom Excel. Format tanggal yang dikenali: 2026-12-25, 25/12/2026, 25 Desember 2026. Tanggal yang sama akan diperbarui, bukan digandakan.</small>
-          <button class="btn" type="submit" style="align-self:flex-start">Tambahkan semua</button>
-        </form>
-      </section>
-      <section class="sec"><h3>Daftar <span>${list.length}</span></h3>
-        ${list.length ? years.map((y) => `<div class="hol-year">${y}</div>${list.filter((x) => x.date.startsWith(y)).map((x) => `<div class="hol-row"><span class="hol-date">${esc(E.shortDate(x.date))}</span><span class="hol-name">${esc(x.name)}</span><button class="btn btn-ghost btn-icon" type="button" data-act="hol-del" data-date="${esc(x.date)}" aria-label="Hapus ${esc(x.name)} ${esc(x.date)}">${ico('cancel', 13)}</button></div>`).join('')}`).join('') : '<p class="muted" style="margin:0;font-size:12.5px">Belum ada tanggal.</p>'}
-      </section>`;
-    }
-    if (S.dataSel === 'documents') {
-        return `<div style="padding:16px 18px"><h2 style="margin:0;font-size:15px;font-weight:600">Dokumen & lampiran</h2><p style="font-size:13px;color:var(--text-2)">Notulen, ekspor chat, dan email dilampirkan saat membuat job. Isinya hanya dipakai sebagai konteks dan kutipan. Baris yang menyuruh agent (“AI: …”, “abaikan instruksi”) ditandai dan diabaikan.</p></div>`;
-    }
+/* ------------------------------------------------------------ contacts */
+const CONTACT_FILTERS = [['all', 'Semua'], ['internal', 'Internal'], ['external', 'Eksternal'], ['group', 'Grup'], ['incomplete', 'Tanpa zona waktu']];
+function kindOf(c) {
+    if (c.kind)
+        return c.kind;
+    const domain = c.email.split('@')[1]?.toLowerCase() || '';
+    return boot().settings.orgDomains.some((d) => domain === d.toLowerCase() || domain.endsWith(`.${d.toLowerCase()}`)) ? 'internal' : 'external';
+}
+function renderContacts() {
+    const b = boot();
+    const all = b.dataset.contacts;
     const q = S.contactQuery.toLowerCase();
-    const list = ds.contacts.filter((c) => !q || `${c.name} ${c.role || ''} ${c.city || ''} ${(c.aliases || []).join(' ')}`.toLowerCase().includes(q));
-    const kind = (c) => (c.kind || (boot().settings.orgDomains.some((d) => c.email.toLowerCase().endsWith(`@${d}`) || c.email.toLowerCase().endsWith(`.${d}`)) ? 'internal' : 'external'));
-    return `<div style="padding:16px 18px 10px"><h2 style="margin:0;font-size:15px;font-weight:600">Kontak & zona waktu</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:12.5px">${ds.contacts.length} kontak${boot().settings.orgDomains.length ? ` · internal: ${esc(boot().settings.orgDomains.join(', '))}` : ' · <span class="c-amber">domain internal belum diatur, semua dianggap eksternal</span>'}</p></div>
-    ${h.withoutTimezone.length ? `<section class="sec"><h3>Perlu dilengkapi <span class="c-amber">${h.withoutTimezone.length}</span></h3>${h.withoutTimezone.slice(0, 6).map((c) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0"><span><b style="font-weight:500">${esc(c.name)}</b> <span class="muted">· ${esc(c.role || c.email)}</span></span><span class="tag tag-amber">zona ?</span></div>`).join('')}</section>` : ''}
-    ${h.duplicateFirstNames.length ? `<section class="sec"><h3>Nama ganda <span>${h.duplicateFirstNames.length}</span></h3><div style="display:flex;flex-wrap:wrap;gap:6px">${h.duplicateFirstNames.map((d) => `<span class="tag">${esc(d.name[0].toUpperCase() + d.name.slice(1))} ×${d.n}</span>`).join('')}</div><p class="muted" style="margin:8px 0 0;font-size:12px">Nama ini selalu memicu pertanyaan “yang mana?”.</p></section>` : ''}
-    <section class="sec"><h3>Daftar</h3>
-      ${ds.contacts.length ? `<label class="search" style="margin-bottom:8px">${ico('search', 13)}<span class="sr-only">Cari kontak</span><input id="contact-search" type="search" placeholder="Cari kontak" value="${esc(S.contactQuery)}" /></label>` : ''}
-      <div style="max-height:320px;overflow-y:auto">${list.map((c) => `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:5px 0;font-size:12.5px;border-bottom:1px solid var(--line-soft)"><span style="min-width:0"><b style="font-weight:500">${esc(c.name)}</b><span class="muted" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc([c.role, c.city, c.email].filter(Boolean).join(' · '))}</span></span><span style="display:flex;gap:4px;align-items:center"><span class="tag mono">${esc(c.timezone || '?')}</span>${kind(c) === 'external' ? '<span class="tag tag-amber">Eks</span>' : ''}</span></div>`).join('') || '<p class="muted" style="margin:0;font-size:12.5px">Belum ada kontak.</p>'}</div>
-    </section>
-    <section class="sec"><h3>Tambah kontak</h3>
-      <form data-form="addcontact" style="display:flex;flex-direction:column;gap:8px">
-        <label class="field"><span>Nama</span><input class="input" name="name" required /></label>
-        <label class="field"><span>Email</span><input class="input" name="email" type="email" required /></label>
-        <div class="grid-2" style="grid-template-columns:1fr 1fr">
-          ${field('Zona waktu', (l) => select({ name: 'timezone', value: '', options: TZ_OPTIONS('Belum tahu'), labelledBy: l }))}
-          ${field('Jenis', (l) => select({ name: 'kind', value: '', options: KIND_OPTIONS('Ikuti domain'), labelledBy: l }))}
-        </div>
-        <label class="field"><span>Jabatan, kota, alias (opsional)</span><input class="input" name="extra" placeholder="mis. Manajer Ops; Jakarta; Pak Budi" /></label>
-        <button class="btn btn-primary" type="submit">Simpan kontak</button>
-      </form>
-      ${ds.meta.origin !== 'empty' ? '<button class="btn btn-ghost btn-danger" type="button" data-act="clear-data" style="margin-top:12px">Kosongkan data organisasi</button>' : ''}
-    </section>`;
+    const f = S.contactFilter;
+    const list = all.filter((c) => {
+        const group = Boolean(c.members?.length);
+        if (f === 'internal' && (group || kindOf(c) !== 'internal'))
+            return false;
+        if (f === 'external' && (group || kindOf(c) !== 'external'))
+            return false;
+        if (f === 'group' && !group)
+            return false;
+        if (f === 'incomplete' && c.timezone)
+            return false;
+        return !q || `${c.name} ${c.email} ${c.role || ''} ${c.city || ''} ${(c.aliases || []).join(' ')}`.toLowerCase().includes(q);
+    });
+    const filtered = Boolean(q) || f !== 'all';
+    const noTz = all.filter((c) => !c.timezone).length;
+    const dupes = b.health.duplicateFirstNames;
+    const sel = S.contactSel;
+    const editing = sel && sel !== 'new' ? all.find((c) => c.id === sel) || null : null;
+    const kindTag = (c) => c.members?.length ? `<span class="tag tag-green">Grup · ${c.members.length}</span>` : kindOf(c) === 'internal' ? '<span class="tag tag-iris">Internal</span>' : '<span class="tag tag-amber">Eksternal</span>';
+    return `
+    <header class="top"><h1>Kontak</h1><span class="sub">${all.length ? `${all.length} kontak` : 'Buku alamat organisasi'}</span><span class="grow"></span>
+      <label class="btn" style="cursor:pointer" title="Mengganti seluruh daftar kontak dengan isi berkas">${ico('fileImport', 14)}Impor CSV / JSON<input type="file" data-act="import" accept=".json,.csv,application/json,text/csv" hidden /></label>
+      <button class="btn btn-primary" type="button" data-act="contact-new">${ico('add', 14)}Tambah kontak</button>
+    </header>
+    <div class="split">
+      <div class="page">
+        <p class="lead">Buku alamat organisasi: karyawan, klien, vendor, dan grup seperti "Tim Makassar". Saat permintaan menyebut "Pak Budi", Berezz mencari email dan zona waktunya di sini. Nama yang tidak ditemukan atau ganda selalu ditanyakan ke Anda.</p>
+        ${all.length && (noTz || dupes.length) ? `<div class="note-warn">${ico('info', 14)}<span>${noTz ? `<b>${noTz} kontak belum punya zona waktu</b>, jadi jam rapatnya tidak bisa dicek. <button class="link" type="button" data-act="contact-filter" data-f="incomplete">Tampilkan</button>` : ''}${noTz && dupes.length ? '<br>' : ''}${dupes.length ? `Nama depan ganda (${dupes.map((d) => `${esc(d.name[0].toUpperCase() + d.name.slice(1))} ×${d.n}`).join(', ')}) selalu memicu pertanyaan "yang mana?". Isi kolom panggilan agar mudah dibedakan.` : ''}</span></div>` : ''}
+        ${all.length ? `<div class="tbar">
+          <span class="seg" role="group" aria-label="Saring kontak">${CONTACT_FILTERS.map(([k, l]) => `<button type="button" data-act="contact-filter" data-f="${k}" aria-pressed="${f === k}">${l}</button>`).join('')}</span>
+          <span class="grow"></span>
+          ${filtered ? `<span class="tbar-count">${list.length} dari ${all.length}</span>` : ''}
+          <label class="search tbar-search">${ico('search', 14)}<span class="sr-only">Cari kontak</span><input id="contact-search" type="search" placeholder="Cari nama, email, kota" value="${esc(S.contactQuery)}" /></label>
+        </div>` : ''}
+        ${list.length ? `<div class="box tbl-wrap"><table class="t"><caption class="sr-only">Daftar kontak</caption>
+          <thead><tr><th scope="col">Nama</th><th scope="col">Dipanggil</th><th scope="col">Jabatan</th><th scope="col">Kota · zona</th><th scope="col">Jenis</th></tr></thead>
+          <tbody>${list.map((c) => `
+            <tr class="row${sel === c.id ? ' sel' : ''}" data-act="contact-open" data-id="${esc(c.id)}" tabindex="0">
+              <td><div class="cell-t" style="max-width:260px">${esc(c.name)}</div><div class="cell-s">${esc(c.email)}</div></td>
+              <td>${esc((c.aliases || []).join(', ') || '—')}</td>
+              <td>${esc(c.role || '—')}</td>
+              <td style="white-space:nowrap">${esc(c.city || '—')} ${c.timezone ? `<span class="mono muted" style="font-size:12px">· ${esc(c.timezone)}</span>` : '<span class="tag tag-amber">Zona?</span>'}</td>
+              <td>${kindTag(c)}</td>
+            </tr>`).join('')}</tbody></table></div>`
+        : all.length ? `<div class="empty"><span class="empty-ico">${ico('search', 20)}</span><h2>Tidak ada kontak yang cocok</h2><p>Ubah kata pencarian atau pilih filter Semua.</p></div>`
+            : `<div class="empty"><span class="empty-ico">${ico('users', 20)}</span><h2>Belum ada kontak</h2><p>Impor CSV dari Excel atau Google Sheets dengan kolom <code>nama, email, zona_waktu, kota, jabatan, alias, anggota</code>, atau tambahkan satu per satu.</p>
+              <div style="display:flex;gap:8px;justify-content:center;margin-top:14px"><label class="btn" style="cursor:pointer">${ico('fileImport', 14)}Impor berkas<input type="file" data-act="import" accept=".json,.csv,application/json,text/csv" hidden /></label><button class="btn btn-primary" type="button" data-act="contact-new">${ico('add', 14)}Tambah kontak</button></div></div>`}
+      </div>
+      ${sel ? renderContactRail(editing) : ''}
+    </div>`;
+}
+/** Shown only while a contact is being added or edited. */
+function renderContactRail(c) {
+    const join = (xs) => esc((xs || []).join('; '));
+    return `<aside class="rail" aria-label="${c ? 'Ubah kontak' : 'Kontak baru'}">
+    <div class="rail-head"><h2>${c ? esc(c.name) : 'Kontak baru'}</h2><button class="btn btn-ghost btn-icon" type="button" data-act="contact-close" aria-label="Tutup">${ico('cancel', 14)}</button></div>
+    <form data-form="contact" class="sec contact-form">
+      <label class="field"><span>Nama lengkap</span><input class="input" name="name" value="${esc(c?.name || '')}" required /></label>
+      <label class="field"><span>Email</span><input class="input" name="email" type="email" value="${esc(c?.email || '')}" required /></label>
+      <div class="grid-2" style="grid-template-columns:1fr 1fr">
+        <label class="field"><span>Jabatan</span><input class="input" name="role" value="${esc(c?.role || '')}" /></label>
+        <label class="field"><span>Kota</span><input class="input" name="city" value="${esc(c?.city || '')}" /></label>
+      </div>
+      <div class="grid-2" style="grid-template-columns:1fr 1fr">
+        ${field('Zona waktu', (l) => select({ name: 'timezone', value: c?.timezone || '', options: TZ_OPTIONS('Belum tahu'), labelledBy: l }))}
+        ${field('Jenis', (l) => select({ name: 'kind', value: c?.kind || '', options: KIND_OPTIONS('Ikuti domain email'), labelledBy: l }))}
+      </div>
+      <label class="field"><span>Dipanggil</span><input class="input" name="aliases" value="${join(c?.aliases)}" placeholder="mis. Pak Budi; Budi S" /><small class="muted">Pisahkan dengan titik koma.</small></label>
+      <label class="field"><span>Anggota grup</span><input class="input" name="members" value="${join(c?.members)}" placeholder="Isi hanya bila ini grup" /><small class="muted">Nama anggota, pisahkan dengan titik koma.</small></label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary" type="submit">${c ? 'Simpan perubahan' : 'Simpan kontak'}</button>
+        ${c ? `<button class="btn btn-ghost btn-danger" type="button" data-act="contact-del" data-id="${esc(c.id)}">Hapus</button>` : ''}
+      </div>
+      ${c ? '<small class="muted">Perubahan berlaku untuk job berikutnya. Job yang sudah ada tetap memakai data saat job itu dibuat.</small>' : ''}
+    </form>
+  </aside>`;
 }
 /* ------------------------------------------------------------ settings */
 function renderGuide() {
@@ -1242,10 +1324,11 @@ function render() {
         : r.name === 'queue' ? renderQueue()
             : r.name === 'history' ? renderHistory()
                 : r.name === 'data' ? renderData()
-                    : r.name === 'settings' ? renderSettings()
-                        : r.name === 'guide' ? renderGuide()
-                            : r.name === 'setup' ? renderSetup()
-                                : renderInbox();
+                    : r.name === 'contacts' ? renderContacts()
+                        : r.name === 'settings' ? renderSettings()
+                            : r.name === 'guide' ? renderGuide()
+                                : r.name === 'setup' ? renderSetup()
+                                    : renderInbox();
     view.innerHTML = html;
     updateGuideToc();
     if (S.dlg && $('#dlg').open)
@@ -1431,10 +1514,30 @@ document.addEventListener('click', async (ev) => {
         case 'hist-open':
             go(`#/history/${el.dataset.job || ''}`);
             break;
-        case 'data-sel':
-            S.dataSel = el.dataset.k || 'contacts';
+        case 'contact-new':
+            S.contactSel = 'new';
+            render();
+            $('form[data-form="contact"] input[name="name"]')?.focus();
+            break;
+        case 'contact-open':
+            S.contactSel = el.dataset.id || null;
             render();
             break;
+        case 'contact-close':
+            S.contactSel = null;
+            render();
+            break;
+        case 'contact-filter':
+            S.contactFilter = el.dataset.f || 'all';
+            render();
+            break;
+        case 'contact-del': {
+            const c = boot().dataset.contacts.find((x) => x.id === el.dataset.id);
+            if (!c || !confirm(`Hapus kontak ${c.name}? Job yang sudah ada tidak berubah.`))
+                return;
+            await run(async () => { S.boot = { ...(await api(`/api/dataset/contacts/${encodeURIComponent(c.id)}`, { method: 'DELETE' })), token: S.token }; S.contactSel = null; render(); }, 'Kontak dihapus.');
+            break;
+        }
         case 'clear-data':
             if (!confirm('Kosongkan semua data organisasi (kontak, aturan, hari libur)? Job yang ada tetap tersimpan.'))
                 return;
@@ -1603,7 +1706,6 @@ document.addEventListener('submit', async (ev) => {
         await run(async () => {
             const out = await api('/api/dataset/holidays', { method: 'POST', body: { date: v('date'), name: v('name') } });
             S.boot = { ...out, token: S.token };
-            S.dataSel = 'holidays';
             render();
         }, 'Hari libur ditambahkan.');
     }
@@ -1612,18 +1714,21 @@ document.addEventListener('submit', async (ev) => {
             const out = await api('/api/dataset/holidays', { method: 'POST', body: { text: v('text') } });
             const { added, skipped, ...payload } = out;
             S.boot = { ...payload, token: S.token };
-            S.dataSel = 'holidays';
             render();
             toast(`${added} tanggal ditambahkan.${skipped.length ? ` ${skipped.length} baris tidak terbaca: ${skipped.slice(0, 2).join('; ')}` : ''}`, skipped.length ? 'err' : 'ok');
         });
     }
-    if (kind === 'addcontact') {
-        const [role, city, ...aliases] = v('extra').split(';').map((x) => x.trim());
+    if (kind === 'contact') {
+        const id = S.contactSel && S.contactSel !== 'new' ? S.contactSel : null;
+        const contact = { name: v('name'), email: v('email'), role: v('role'), city: v('city'), timezone: v('timezone'), kind: v('kind'), aliases: v('aliases'), members: v('members') };
         await run(async () => {
-            const out = await api('/api/dataset/contacts', { method: 'POST', body: { contact: { name: v('name'), email: v('email'), timezone: v('timezone'), kind: v('kind'), role, city, aliases: aliases.filter(Boolean) } } });
-            S.boot = { ...out, token: S.token };
+            const out = await api(id ? `/api/dataset/contacts/${encodeURIComponent(id)}` : '/api/dataset/contacts', { method: id ? 'PUT' : 'POST', body: { contact } });
+            const { contact: saved, warning, ...payload } = out;
+            S.boot = { ...payload, token: S.token };
+            S.contactSel = saved.id;
             render();
-        }, 'Kontak disimpan.');
+            toast(warning ? `Kontak disimpan, tetapi ${warning}.` : 'Kontak disimpan.', warning ? 'err' : 'ok');
+        });
     }
 });
 $('#dlg').addEventListener('close', () => { S.dlg = null; });

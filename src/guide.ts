@@ -89,7 +89,7 @@ export function renderGuide(c: GuideContext): string {
 
   const setup = section('g-setup', 'Persiapan pertama', 'Sekali saja', box([
     row(num(1), 'Isi data organisasi', 'Nama perusahaan, domain email kantor (mis. <code>perusahaan.co.id</code>) untuk membedakan penerima internal dan eksternal, serta nama Anda sebagai penyetuju.', `${state(Boolean(c.orgName && c.approver))}${go('#/settings', 'Pengaturan')}`),
-    row(num(2), 'Masukkan kontak', 'Impor CSV dari Excel atau Google Sheets berisi nama, email, kota, dan <b>zona waktu</b>. Nama panggilan seperti "Pak Budi" diisi di kolom alias. Templat tersedia di Sumber data.', `${state(c.contacts > 0)}${go('#/data', 'Sumber data')}`),
+    row(num(2), 'Masukkan kontak', 'Impor CSV dari Excel atau Google Sheets berisi nama, email, kota, dan <b>zona waktu</b>. Nama panggilan seperti "Pak Budi" diisi di kolom alias. Bisa juga ditambah satu per satu.', `${state(c.contacts > 0)}${go('#/contacts', 'Kontak')}`),
     row(num(3), 'Isi kalender libur', 'Tambahkan libur nasional dan cuti bersama satu per satu, atau tempel daftarnya sekaligus. Tanpa ini, setiap tanggal akan ditanyakan.', `${state(c.holidaysReady)}${go('#/data', 'Kalender libur')}`),
     row(num(4), 'Sesuaikan aturan kerja', 'Jam kerja, salat Jumat, batas pertanyaan, dan jeda urungkan. Selama belum diubah, Berezz memakai aturan bawaan (08.00–17.00, salat Jumat 11.30–13.00).', `${state(c.rulesFromSop)}${go('#/data', 'Lihat aturan')}`),
   ].join('')));
@@ -115,7 +115,7 @@ export function renderGuide(c: GuideContext): string {
 
   const integration = section('g-integrasi', 'Data & aplikasi tujuan', '', `
     ${box([
-      row(icon('users', 15), 'Kontak', 'CSV atau JSON dengan kolom nama, email, zona waktu (WIB/WITA/WIT), kota, jabatan, alias, dan jenis (internal/eksternal).'),
+      row(icon('users', 15), 'Kontak', 'Buku alamat organisasi: karyawan, klien, vendor, dan grup. Impor CSV/JSON (nama, email, zona waktu, kota, jabatan, alias, anggota) atau isi di halaman Kontak.', go('#/contacts', 'Kontak')),
       row(icon('shield', 15), 'Aturan kerja', 'Bagian <code>rules</code> di templat JSON.'),
       row(icon('calendar', 15), 'Hari libur', 'Diisi langsung di halaman Sumber data, atau bagian <code>holidays</code> di templat.'),
       row(icon('file', 15), 'Dokumen', 'Dilampirkan per job dan hanya dibaca sebagai data.'),
@@ -158,6 +158,7 @@ export function renderGuide(c: GuideContext): string {
 
   const faq = section('g-faq', 'Pertanyaan umum', '', box([
     ['Apakah email dan undangan benar-benar terkirim?', 'Belum. Gmail, Google Calendar, dan Trello di versi ini adalah mock. Semua hasilnya berlabel "mock" dan tercatat di audit.'],
+    ['Kontak di Berezz itu kontak siapa?', 'Daftar orang yang bisa menerima aksi dari Berezz: karyawan, klien, vendor, dan grup seperti "Tim Makassar". Bukan kontak HP pribadi dan bukan daftar pengguna aplikasi. Berezz memakainya untuk menemukan email dan zona waktu orang yang disebut di permintaan, serta untuk membedakan penerima internal dan eksternal.'],
     ['Kenapa Berezz sering bertanya?', 'Karena Berezz tidak menebak. Lengkapi kontak (termasuk zona waktu dan alias) serta kalender libur, maka pertanyaan akan jauh berkurang.'],
     ['Saya terlanjur menyetujui aksi yang salah.', `Buka Antrean kirim dan tekan Urungkan sebelum hitungan ${c.undoSeconds} detik habis. Setelah itu aksi bisa disunting dan diajukan lagi.`],
     ['Apa bedanya berkas permintaan dan dokumen pendukung?', 'Berkas permintaan berisi perintah kerjanya dan isinya menjadi teks permintaan. Dokumen pendukung adalah bahan yang dirujuk, mis. notulen yang harus dikirim.'],

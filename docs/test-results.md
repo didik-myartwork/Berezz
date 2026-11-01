@@ -1,6 +1,6 @@
 # Hasil uji Berezz
 
-Dijalankan 2026-11-01: `npm run build` lulus dan `npm test` lulus **40/40** (4 tes dataset, 20 skenario, 7 MCP, 9 persistence). Replay UI dengan `node tools/run-cases.mjs` lulus **20/20** tanpa error JavaScript.
+Dijalankan 2026-11-01 dengan `node tools/run-cases.mjs`. **20 dari 20 test case lulus**.
 
 > **Label:** test case dan dataset (`datasets/organisasi-uji`, organisasi fiktif) **dibuat tim Berezz** dengan gaya contoh test di handbook, karena dataset dan test resmi panitia belum diterima. Ganti `tests/cases/cases.json` dan dataset bila test resmi tersedia; runner yang sama bisa dipakai.
 

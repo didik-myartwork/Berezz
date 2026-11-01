@@ -380,6 +380,21 @@ async function route(req, res) {
     await save();
     return send(res, 201, { contact: out.contact, warning: out.problem || null, ...bootstrap() });
   }
+  let cm;
+  if ((m === 'PUT' || m === 'DELETE') && (cm = /^\/api\/dataset\/contacts\/([^/]+)$/.exec(p))) {
+    const id = decodeURIComponent(cm[1]);
+    if (!ws.dataset.contacts.some((c) => c.id === id)) return send(res, 404, { error: 'Kontak tidak ditemukan.' });
+    if (m === 'DELETE') {
+      ws.dataset = D.removeContact(ws.dataset, id);
+      await save();
+      return send(res, 200, bootstrap());
+    }
+    const out = D.updateContact(ws.dataset, id, body.contact || {});
+    if (!out.contact) return send(res, 422, { error: out.problem || 'Kontak tidak valid' });
+    ws.dataset = out.dataset;
+    await save();
+    return send(res, 200, { contact: out.contact, warning: out.problem || null, ...bootstrap() });
+  }
   if (m === 'POST' && p === '/api/dataset/holidays') {
     const source = `Diisi manual oleh ${operator()}`;
     let items = [];

@@ -291,6 +291,19 @@ export function addContact(current: Dataset, raw: Record<string, unknown>): { da
   return { dataset: next, contact, problem };
 }
 
+/** Replace one contact's fields; the id stays so existing references keep pointing at it. */
+export function updateContact(current: Dataset, id: string, raw: Record<string, unknown>): { dataset: Dataset; contact: Contact | null; problem?: string } {
+  if (!current.contacts.some((c) => c.id === id)) return { dataset: current, contact: null, problem: 'kontak tidak ditemukan' };
+  const { contact, problem } = normalizeContact({ ...raw, id }, new Set());
+  if (!contact) return { dataset: current, contact: null, problem };
+  return { dataset: { ...current, contacts: current.contacts.map((c) => (c.id === id ? contact : c)) }, contact, problem };
+}
+
+/** Jobs keep their own copy of the dataset, so removing a contact never changes an existing plan. */
+export function removeContact(current: Dataset, id: string): Dataset {
+  return { ...current, contacts: current.contacts.filter((c) => c.id !== id) };
+}
+
 /** Quality signals shown on the data page. */
 export function datasetHealth(ds: Dataset) {
   const firstNames = new Map<string, number>();
