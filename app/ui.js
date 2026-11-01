@@ -1206,7 +1206,6 @@ function renderContacts() {
     </header>
     <div class="split">
       <div class="page">
-        <p class="lead">Buku alamat organisasi: karyawan, klien, vendor, dan grup seperti "Tim Makassar". Saat permintaan menyebut "Pak Budi", Berezz mencari email dan zona waktunya di sini. Nama yang tidak ditemukan atau ganda selalu ditanyakan ke Anda.</p>
         ${all.length && (noTz || dupes.length) ? `<div class="note-warn">${ico('info', 14)}<span>${noTz ? `<b>${noTz} kontak belum punya zona waktu</b>, jadi jam rapatnya tidak bisa dicek. <button class="link" type="button" data-act="contact-filter" data-f="incomplete">Tampilkan</button>` : ''}${noTz && dupes.length ? '<br>' : ''}${dupes.length ? `Nama depan ganda (${dupes.map((d) => `${esc(d.name[0].toUpperCase() + d.name.slice(1))} ×${d.n}`).join(', ')}) selalu memicu pertanyaan "yang mana?". Isi kolom panggilan agar mudah dibedakan.` : ''}</span></div>` : ''}
         ${all.length ? `<div class="tbar">
           <span class="seg" role="group" aria-label="Saring kontak">${CONTACT_FILTERS.map(([k, l]) => `<button type="button" data-act="contact-filter" data-f="${k}" aria-pressed="${f === k}">${l}</button>`).join('')}</span>
