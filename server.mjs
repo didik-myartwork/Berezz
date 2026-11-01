@@ -141,6 +141,8 @@ function bootstrap() {
     jobs: ws.jobs.map((j) => publicJob(j)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     queue: ws.jobs.flatMap((j) => (j.session.actions || []).filter((a) => a.result).map((a) => ({ jobId: j.id, jobTitle: j.title, action: a }))),
     planner: { modelAvailable: llmReady(), model: llmReady() ? LLM.model : null },
+    // Shown on the guide page so the WorkBuddy setup can be copied with the right paths.
+    install: { root: ROOT, mcpScript: join(ROOT, 'mcp', 'berezz-mcp.mjs'), url: `http://localhost:${PORT}` },
     referenceDate: E.referenceDate(ws.settings, new Date(), ws.dataset.timezones),
     now: new Date(nowMs()).toISOString(),
     storage: { writable: !storageFailure, error: storageFailure?.message || null },
@@ -377,6 +379,26 @@ async function route(req, res) {
     ws.dataset = out.dataset;
     await save();
     return send(res, 201, { contact: out.contact, warning: out.problem || null, ...bootstrap() });
+  }
+  if (m === 'POST' && p === '/api/dataset/holidays') {
+    const source = `Diisi manual oleh ${operator()}`;
+    let items = [];
+    let skipped = [];
+    if (body.text) ({ holidays: items, skipped } = D.parseHolidayList(String(body.text)));
+    else {
+      const h = D.parseHolidayLine(`${String(body.date || '')} ${String(body.name || '')}`);
+      if (h) items = [{ date: h.date, name: String(body.name || '').trim() || 'Hari libur' }];
+    }
+    if (!items.length) return send(res, 422, { error: skipped.length ? `Tidak ada tanggal yang terbaca. Contoh format: 2026-12-25 Hari Raya Natal.` : 'Pilih tanggal dan isi nama hari liburnya.', skipped });
+    ws.dataset = D.upsertHolidays(ws.dataset, items, source);
+    await save();
+    return send(res, 200, { added: items.length, skipped, ...bootstrap() });
+  }
+  let hm;
+  if (m === 'DELETE' && (hm = /^\/api\/dataset\/holidays\/(\d{4}-\d{2}-\d{2})$/.exec(p))) {
+    ws.dataset = D.removeHoliday(ws.dataset, hm[1]);
+    await save();
+    return send(res, 200, bootstrap());
   }
   if (m === 'DELETE' && p === '/api/dataset') {
     ws.dataset = D.emptyDataset();

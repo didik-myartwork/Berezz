@@ -7,6 +7,7 @@
 import * as E from './engine.js';
 import { icon } from './icons.js';
 import { select, multiSelect, datePicker, timeSelect, initControls, closeControl } from './controls.js';
+import { renderGuide as guideHTML } from './guide.js';
 function speechRecognitionConstructor() {
     const speechWindow = window;
     return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
@@ -149,7 +150,8 @@ function parseRoute() {
         case 'queue':
         case 'data':
         case 'settings':
-        case 'setup': return { name, id: null, filter: null };
+        case 'setup':
+        case 'guide': return { name, id: null, filter: null };
         case 'history': return { name: 'history', id: arg, filter: null };
         default: return { name: 'inbox', id: arg, filter: null };
     }
@@ -222,27 +224,27 @@ function glyph(job) {
 function nextToken(job) {
     const c = job.counts;
     if (c.escalated)
-        return `<span class="c-red">eskalasi</span>`;
+        return `<span class="c-red">butuh keputusan</span>`;
     const parts = [];
     if (c.answer)
-        parts.push(`<span class="c-amber">${c.answer} jawab</span>`);
+        parts.push(`<span class="c-amber">${c.answer} pertanyaan</span>`);
     if (c.approve)
-        parts.push(`<span class="c-iris">${c.approve} setujui</span>`);
+        parts.push(`<span class="c-iris">${c.approve} perlu disetujui</span>`);
     if (parts.length)
         return parts.join('<span class="muted"> · </span>');
     if (c.queued)
-        return `<span class="muted">${c.queued} antrean</span>`;
+        return `<span class="muted">${c.queued} di antrean</span>`;
     return `<span class="muted">${c.done}/${c.total}</span>`;
 }
 const STATUS_TAG = {
     needs_clarification: ['Perlu jawaban', 'tag-amber'],
-    pending_approval: ['Siap ditinjau', 'tag-iris'],
+    pending_approval: ['Menunggu persetujuan', 'tag-iris'],
     approved: ['Disetujui', 'tag-green'],
     queued: ['Di antrean', ''],
-    simulated: ['Diteruskan (simulasi)', 'tag-green'],
+    simulated: ['Terkirim · mock', 'tag-green'],
     undone: ['Diurungkan', ''],
     cancelled: ['Dibatalkan', ''],
-    escalated: ['Eskalasi', 'tag-red'],
+    escalated: ['Butuh keputusan', 'tag-red'],
 };
 const TYPE_ICON = { email: 'mail', meeting: 'calendar', task: 'task' };
 /**
@@ -308,7 +310,8 @@ function renderSide() {
       <p class="nav-label">Kontrol</p>
       <div class="nav">
         <a href="#/data" ${cur(r.name === 'data')}>${ico('database', 16)}<span class="lbl">Sumber data</span>${dataWarn ? '<span class="warn-dot" title="Ada data yang belum lengkap"></span>' : ''}</a>
-        <a href="#/history" >${ico('audit', 16)}<span class="lbl">Audit log</span></a>
+        <a href="#/history" >${ico('audit', 16)}<span class="lbl">Jejak audit</span></a>
+        <a href="#/guide" ${cur(r.name === 'guide')}>${ico('book', 16)}<span class="lbl">Panduan</span></a>
         <a href="#/settings" ${cur(r.name === 'settings')}>${ico('settings', 16)}<span class="lbl">Pengaturan</span>${org ? '' : '<span class="warn-dot" title="Organisasi belum diatur"></span>'}</a>
       </div>
     </div>
@@ -337,8 +340,8 @@ function renderInbox() {
     if (!boot().jobs.length)
         return renderSetup(true);
     const groups = [
-        ['mine', 'Perlu Anda'],
-        ['running', 'Berjalan'],
+        ['mine', 'Perlu tindakan Anda'],
+        ['running', 'Di antrean kirim'],
         ['done', 'Selesai'],
     ];
     const title = S.route.filter === 'mine' ? 'Perlu tindakan saya' : S.route.filter?.startsWith('ch:') ? S.route.filter.slice(3) : 'Kotak masuk';
@@ -368,26 +371,26 @@ function renderJob(job) {
     const s = job.session;
     const acts = s.actions;
     const groups = [
-        ['answer', 'Perlu jawaban Anda', `Tertahan sampai dijawab · maks ${boot().dataset.rules.maxClarificationRounds} putaran`, acts.filter((a) => a.status === 'needs_clarification')],
-        ['esc', 'Eskalasi ke manusia', 'Tidak bisa diselesaikan otomatis', acts.filter((a) => a.status === 'escalated')],
-        ['approve', 'Siap disetujui', 'Disetujui satu per satu', acts.filter((a) => ['pending_approval', 'approved'].includes(a.status))],
-        ['queue', 'Di antrean', `Bisa diurungkan ${boot().dataset.rules.undoWindowSeconds} detik`, acts.filter((a) => a.status === 'queued')],
+        ['answer', 'Perlu jawaban Anda', 'Tidak ada yang dikirim sebelum pertanyaannya dijawab', acts.filter((a) => a.status === 'needs_clarification')],
+        ['esc', 'Butuh keputusan Anda', 'Berezz tidak bisa melanjutkan sendiri: sunting atau batalkan', acts.filter((a) => a.status === 'escalated')],
+        ['approve', 'Menunggu persetujuan', 'Tinjau isinya, lalu setujui satu per satu', acts.filter((a) => ['pending_approval', 'approved'].includes(a.status))],
+        ['queue', 'Di antrean kirim', `Masih bisa diurungkan sebelum hitungan ${boot().dataset.rules.undoWindowSeconds} detik habis`, acts.filter((a) => a.status === 'queued')],
         ['done', 'Selesai', '', acts.filter((a) => ['simulated', 'undone', 'cancelled'].includes(a.status))],
     ];
-    const stTag = job.counts.escalated ? ['Eskalasi', 'tag-red'] : job.counts.answer ? ['Perlu jawaban', 'tag-amber'] : job.counts.approve ? ['Siap disetujui', 'tag-iris'] : job.counts.queued ? ['Di antrean', ''] : ['Selesai', 'tag-green'];
+    const stTag = job.counts.escalated ? ['Butuh keputusan', 'tag-red'] : job.counts.answer ? ['Perlu jawaban', 'tag-amber'] : job.counts.approve ? ['Menunggu persetujuan', 'tag-iris'] : job.counts.queued ? ['Di antrean', ''] : ['Selesai', 'tag-green'];
     return `
     <header class="dhead">
       <div style="flex:1 1 360px;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="mono muted" style="font-size:11.5px">${esc(job.id)}</span>
           <span class="tag ${stTag[1]}">${stTag[0]}</span>
-          <span class="mono muted" style="font-size:11.5px">rencana v${s.planVersion}</span>
+          <span class="muted" style="font-size:12px">rencana versi ${s.planVersion}</span>
           ${job.source === 'workbuddy' ? `<span class="tag tag-iris">${ico('agent', 12)}dari WorkBuddy</span>` : ''}
         </div>
         <h2>${esc(job.title)}</h2>
         <p class="dmeta">
           ${job.requester ? `<span class="avatar avatar-sm" aria-hidden="true">${esc(initials(job.requester))}</span><span style="color:var(--text-2)">${esc(job.requester)}</span><span>·</span>` : ''}
-          <span>${esc(job.channel)}</span><span>·</span><span>${esc(dayLabel(job.createdAt))}, ${esc(hhmm(job.createdAt))}</span><span>·</span><span>${esc(s.planner?.name || '')}</span>
+          <span>${esc(job.channel)}</span><span>·</span><span>${esc(dayLabel(job.createdAt))}, ${esc(hhmm(job.createdAt))}</span><span>·</span><span>Dipecah oleh ${esc((s.planner?.name || '').replace(/^Planner\s+/i, ''))}</span>
         </p>
       </div>
       <div style="display:flex;gap:6px">
@@ -443,7 +446,7 @@ function renderAction(job, a) {
     const [label, cls] = STATUS_TAG[a.status];
     let end = '';
     if (['pending_approval', 'approved'].includes(a.status))
-        end = `<button class="btn" type="button" data-act="review" data-a="${a.id}">Tinjau</button>`;
+        end = `<button class="btn" type="button" data-act="review" data-a="${a.id}">Tinjau &amp; setujui</button>`;
     else if (a.status === 'queued') {
         const result = a.result;
         if (!result)
@@ -452,7 +455,7 @@ function renderAction(job, a) {
         end = `<span class="bar" aria-hidden="true"><span data-bar="${esc(until)}" data-from="${esc(result.queuedAt)}"></span></span><span class="mono num" data-until="${esc(until)}" style="font-size:13px;font-weight:500"></span><button class="btn" type="button" data-act="undo" data-a="${a.id}">${ico('undo', 13)}Urungkan</button>`;
     }
     else if (a.status === 'simulated')
-        end = `<span class="tag ${cls}">Diteruskan ke ${esc(CONNECTOR[a.type].app)} <span class="mock">· mock</span></span>`;
+        end = `<span class="tag ${cls}">Terkirim ke ${esc(CONNECTOR[a.type].app)} <span class="mock">· mock</span></span>`;
     else
         end = `<span class="tag ${cls}">${label}</span>`;
     return `
@@ -503,7 +506,7 @@ function renderAsk(job, a) {
     return `<div class="ask">
     <div class="ask-q"><strong>${esc(q.text)}</strong>${q.hint ? `<span class="muted">${esc(q.hint)}</span>` : ''}</div>
     ${opts}${add}${input}
-    <div class="ask-note">${ico('lock', 13)}Aksi tertahan${round ? ` · putaran belum pasti ${round}/${boot().dataset.rules.maxClarificationRounds}` : ''}</div>
+    <div class="ask-note">${ico('lock', 13)}Aksi ini tidak dikirim sebelum dijawab${round ? ` · "Saya belum tahu" sudah ${round} dari ${boot().dataset.rules.maxClarificationRounds} kali` : ''}</div>
   </div>`;
 }
 function renderMore(job, a) {
@@ -656,7 +659,7 @@ function renderRail(job) {
         ${step('done', 'Diterima', hhmm(auditAt('intake')))}
         ${step('done', `Direncanakan · ${c.total} aksi`, hhmm(auditAt('plan')))}
         ${step('done', 'Divalidasi', hhmm(auditAt('review')))}
-        ${step(c.answer || c.escalated ? 'now' : 'done', 'Klarifikasi', c.answer ? `<span class="c-amber">${c.answer}</span>` : c.escalated ? `<span class="c-red">${c.escalated} eskalasi</span>` : '')}
+        ${step(c.answer || c.escalated ? 'now' : 'done', 'Klarifikasi', c.answer ? `<span class="c-amber">${c.answer}</span>` : c.escalated ? `<span class="c-red">${c.escalated} butuh keputusan</span>` : '')}
         ${step(c.answer || c.escalated ? 'todo' : c.approve ? 'now' : 'done', 'Persetujuan', c.approve ? `<span class="c-iris">${c.approve}</span>` : '')}
         ${step(c.queued ? 'now' : c.done + c.undone ? 'done' : 'todo', 'Antrean kirim', c.queued ? String(c.queued) : '')}
         ${step(live && c.done + c.undone === live ? 'done' : 'todo', 'Selesai', `${c.done}/${live}`)}
@@ -668,8 +671,8 @@ function renderRail(job) {
         <dt>Kontak</dt><dd>${ds.contacts.length ? `${ds.contacts.length} · ${esc(ds.meta.fileName || 'manual')}` : '<span class="c-amber">kosong</span>'}</dd>
         <dt>Aturan</dt><dd${ds.rules.isDefault ? ' class="c-amber"' : ''}>${esc(ds.rules.isDefault ? 'bawaan (belum SOP)' : ds.rules.source)}</dd>
         <dt>Hari libur</dt><dd${ds.holidays === null ? ' class="c-amber"' : ''}>${ds.holidays === null ? 'belum tersedia' : `${ds.holidays.length} tanggal`}</dd>
-        <dt>Tgl acuan</dt><dd>${esc(E.shortDate(s.systemDate))} ${E.parseISO(s.systemDate).getUTCFullYear()}</dd>
-        <dt>Planner</dt><dd>${esc(s.planner?.name || '')}</dd>
+        <dt>Tanggal acuan</dt><dd>${esc(E.shortDate(s.systemDate))} ${E.parseISO(s.systemDate).getUTCFullYear()}</dd>
+        <dt>Dipecah oleh</dt><dd>${esc((s.planner?.name || '').replace(/^Planner\s+/i, ''))}</dd>
       </dl>
     </section>
   </aside>`;
@@ -745,7 +748,7 @@ function renderDialog() {
       <button class="btn btn-ghost btn-danger" type="button" data-act="cancel" data-a="${a.id}">Batalkan aksi</button>
       <span style="flex:1"></span>
       <button class="btn" type="button" data-act="dlg-close">Kembali</button>
-      <button class="btn btn-primary" type="button" data-act="approve" data-a="${a.id}" data-v="${a.version}" ${missing.length || a.status !== 'pending_approval' ? 'disabled' : ''}>Setujui v${a.version}</button>
+      <button class="btn btn-primary" type="button" data-act="approve" data-a="${a.id}" data-v="${a.version}" ${missing.length || a.status !== 'pending_approval' ? 'disabled' : ''}>Setujui versi ${a.version}</button>
     </div>`;
 }
 /* ------------------------------------------------------------ setup */
@@ -759,13 +762,13 @@ function renderSetup(asInbox = false) {
     ];
     return `<div class="page"><div class="setup">
     <h1>${asInbox ? 'Belum ada job' : 'Mulai dengan Berezz'}</h1>
-    <p>Berezz hanya bekerja dengan data organisasi Anda sendiri. Tidak ada data contoh di dalam aplikasi.</p>
+    <p>Berezz mengubah satu permintaan kerja (chat, notulen, atau rekaman suara) menjadi email, rapat, dan tugas yang Anda setujui satu per satu. Berezz hanya memakai data organisasi Anda sendiri. <a href="#/guide">Baca panduan lengkap</a>.</p>
     <div class="box">${rows.map(([ok, title, desc, href, cta]) => `
       <div class="check-row"><span class="check-dot${ok ? ' ok' : ''}">${ok ? ico('tick', 11) : ''}</span>
         <div><div class="rt">${title}</div><div class="muted" style="font-size:12.5px">${desc}</div></div>
         <a class="btn${ok ? ' btn-ghost' : ''}" href="${href}">${ok ? 'Ubah' : cta}</a></div>`).join('')}
     </div>
-    <p class="muted" style="font-size:12.5px;margin-top:14px">${ico('agent', 13)} Agent WorkBuddy juga bisa membuat job lewat server MCP Berezz. Persetujuan tetap hanya di sini.</p>
+    <p class="muted" style="font-size:12.5px;margin-top:14px">${ico('agent', 13)} Memakai WorkBuddy? Agent-nya bisa membuat job di sini, tetapi persetujuan tetap di tangan Anda. <a href="#/guide">Cara menghubungkan</a>.</p>
   </div></div>`;
 }
 /* ------------------------------------------------------------ new job */
@@ -783,57 +786,86 @@ function previewHTML() {
     ${qs.length ? `<div class="sec-h" style="margin-top:12px">Akan ditanyakan</div>${qs.map(({ a, q }) => `<div class="sig"><span class="c-amber">${ico('clarify', 14)}</span><span>${a.id} · ${esc(q.text)}</span></div>`).join('')}` : ''}
     ${s.findingsGlobal.length ? `<div class="sig" style="margin-top:12px"><span class="c-amber">${ico('shieldBlock', 14)}</span><span>${s.findingsGlobal.length} instruksi tersisip akan diabaikan</span></div>` : ''}`;
 }
+const INPUT_MODES = [
+    { mode: 'text', icon: 'chat', title: 'Tempel teks', desc: 'Salin chat, email, atau pesan lalu tempel di sini.', channel: 'Chat tim' },
+    { mode: 'file', icon: 'upload', title: 'Unggah berkas', desc: 'Notulen atau ekspor chat (.txt, .md, .eml). Isinya jadi teks permintaan.', channel: 'Notulen rapat' },
+    { mode: 'voice', icon: 'mic', title: 'Rekam suara', desc: 'Bicara dalam Bahasa Indonesia, lalu periksa transkripnya. Chrome/Edge.', channel: 'Voice note' },
+];
 function renderNew() {
     const d = S.draft;
     const sr = speechRecognitionConstructor();
-    const modeBtn = (m, label, ic = null) => `<button role="tab" type="button" data-act="mode" data-m="${m}" aria-selected="${d.mode === m}">${ic ? ico(ic, 13) : ''}${label}</button>`;
-    const rec = d.mode === 'voice' ? `
-    <div class="rec">
-      <button class="rec-btn${S.listening ? ' live' : ''}" type="button" data-act="listen" aria-label="${S.listening ? 'Berhenti merekam' : 'Mulai merekam'}" ${sr ? '' : 'disabled'}>${ico(S.listening ? 'stop' : 'mic', 14)}</button>
-      ${S.listening ? '<span class="pulse" aria-hidden="true"></span><span style="font-size:12.5px">Mendengarkan… bicara dalam Bahasa Indonesia</span>' : `<span class="muted" style="font-size:12.5px">${sr ? 'Tekan untuk merekam. Transkrip muncul di bawah dan bisa dikoreksi.' : 'Browser ini tidak mendukung pengenalan suara. Gunakan Chrome/Edge, atau tempel transkrip.'}</span>`}
-      <span style="flex:1"></span><span class="mono muted" style="font-size:11.5px">id-ID</span>
-    </div>` : d.mode === 'file' ? `
-    <div class="rec">
-      <label class="btn" style="cursor:pointer">${ico('upload', 14)}Pilih berkas permintaan<input type="file" data-act="reqfile" accept=".txt,.md,.eml,.csv,.json,text/plain" hidden /></label>
-      <span class="muted" style="font-size:12.5px">${d.sourceFile ? `Dari ${esc(d.sourceFile)} · periksa teksnya di bawah` : 'Notulen, chat ekspor, atau email (.txt, .md, .eml)'}</span>
-    </div>` : '';
+    const textLabel = d.mode === 'voice' ? 'Transkrip — periksa dan koreksi sebelum lanjut' : d.mode === 'file' ? 'Isi berkas — periksa sebelum lanjut' : 'Isi permintaan';
+    const source = d.mode === 'voice' ? `
+      <div class="rec">
+        <button class="rec-btn${S.listening ? ' live' : ''}" type="button" data-act="listen" aria-label="${S.listening ? 'Berhenti merekam' : 'Mulai merekam'}" ${sr ? '' : 'disabled'}>${ico(S.listening ? 'stop' : 'mic', 14)}</button>
+        ${S.listening ? '<span class="pulse" aria-hidden="true"></span><span style="font-size:13px">Merekam… bicara dengan jelas, tekan tombol merah untuk berhenti.</span>' : `<span class="muted" style="font-size:13px">${sr ? 'Tekan tombol untuk mulai merekam. Teks muncul di kotak di bawah.' : 'Browser ini tidak bisa merekam suara. Pakai Chrome atau Edge, atau ketik transkripnya di bawah.'}</span>`}
+      </div>` : d.mode === 'file' ? `
+      <label class="drop">
+        ${ico('upload', 18)}
+        <span><b>${d.sourceFile ? esc(d.sourceFile) : 'Pilih berkas permintaan'}</b><span class="muted">${d.sourceFile ? 'Ganti berkas · teksnya sudah dimuat di bawah' : '.txt, .md, atau .eml · maks 2 MB'}</span></span>
+        <input type="file" data-act="reqfile" accept=".txt,.md,.eml,.csv,.json,text/plain" class="sr-only" />
+      </label>` : '';
     const planner = boot().planner.modelAvailable
-        ? `<span class="seg" role="group" aria-label="Planner"><button type="button" data-act="planner" data-p="rules" aria-pressed="${d.planner === 'rules'}">Aturan</button><button type="button" data-act="planner" data-p="model" aria-pressed="${d.planner === 'model'}">Model</button></span>`
-        : `<span class="muted" style="font-size:12px" title="Atur BEREZZ_LLM_* di server untuk planner model">Planner: aturan</span>`;
+        ? `<div class="nj-row"><span class="lbl-sm" id="lbl-planner">Dipecah oleh</span><span class="seg" role="group" aria-labelledby="lbl-planner"><button type="button" data-act="planner" data-p="rules" aria-pressed="${d.planner === 'rules'}">Aturan Berezz</button><button type="button" data-act="planner" data-p="model" aria-pressed="${d.planner === 'model'}">Model AI</button></span></div>`
+        : '';
     return `
     <header class="top">
       <a href="#/inbox" class="muted" style="font-size:12.5px;text-decoration:none">Kotak masuk</a><span style="color:var(--line-strong)">/</span><h1>Job baru</h1>
-      <span class="grow"></span>
-      <div class="seg" role="tablist" aria-label="Cara memasukkan permintaan">${modeBtn('text', 'Tempel teks')}${modeBtn('file', 'Unggah berkas')}${modeBtn('voice', 'Voice note', 'mic')}</div>
+      <span class="sub">Masukkan satu permintaan. Berezz memecahnya jadi aksi yang Anda setujui satu per satu.</span>
     </header>
     <div class="split">
       <div class="page">
-        ${!contactsReady() ? `<div class="box" style="padding:10px 14px;font-size:13px;border-color:var(--amber-line);background:var(--amber-wash)">${ico('info', 14)} Data kontak masih kosong. Berezz tetap membuat rencana, tetapi setiap nama akan ditanyakan. <a href="#/data">Impor kontak</a></div>` : ''}
-        <form class="box composer" data-form="newjob">
-          ${rec}
-          <label class="sr-only" for="req-text">Permintaan</label>
-          <textarea id="req-text" name="text" placeholder="Tempel chat, notulen, atau transkrip di sini. Contoh: Tolong kirim notulen ke Pak … dan jadwalkan follow-up Jumat dengan tim …">${esc(d.text)}</textarea>
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 14px 12px;border-top:1px solid var(--line-soft)">
-            <label style="display:flex;align-items:center;gap:8px"><span class="lbl-sm">Peminta</span><input class="input" name="requester" value="${esc(d.requester)}" style="width:170px;height:30px" placeholder="Nama" /></label>
-            <div style="display:flex;align-items:center;gap:8px"><span class="lbl-sm" id="lbl-channel">Saluran</span>${select({ name: 'channel', value: d.channel, options: ['Chat tim', 'Notulen rapat', 'Voice note', 'Email diteruskan', 'Teks ditempel'].map((c) => ({ value: c, label: c })), labelledBy: 'lbl-channel', className: 'sel-sm' })}</div>
-            ${planner}
-          </div>
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 14px 12px">
-            ${d.attachments.map((f, i) => `<span class="chip">${ico('attachment', 13)}<span class="mono" style="font-size:11.5px">${esc(f.name)}</span><span class="muted">data</span><button type="button" data-act="rm-att" data-i="${i}" aria-label="Hapus lampiran ${esc(f.name)}">${ico('cancel', 12)}</button></span>`).join('')}
-            <label class="btn btn-ghost" style="cursor:pointer;height:28px">${ico('attachment', 13)}Lampiran<input type="file" data-act="attach" accept=".txt,.md,.eml,.csv,.json,text/plain" multiple hidden /></label>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--canvas);border-top:1px solid var(--line-soft);border-radius:0 0 10px 10px">
-            <span class="muted" style="font-size:12px;flex:1 1 260px">Lampiran dibaca sebagai data; perintah di dalamnya tidak dijalankan.</span>
+        ${!contactsReady() ? `<div class="note-warn">${ico('info', 14)}<span>Data kontak masih kosong, jadi setiap nama akan ditanyakan. <a href="#/data">Impor kontak</a> agar penerima dikenali otomatis.</span></div>` : ''}
+        <form class="nj" data-form="newjob">
+          <section class="nj-step" aria-labelledby="nj-1">
+            <h2 id="nj-1"><span class="nj-n">1</span>Dari mana permintaannya?</h2>
+            <div class="nj-modes" role="radiogroup" aria-labelledby="nj-1">
+              ${INPUT_MODES.map((m) => `<button type="button" role="radio" aria-checked="${d.mode === m.mode}" class="nj-mode" data-act="mode" data-m="${m.mode}">
+                <span class="nj-mode-ico">${ico(m.icon, 16)}</span><span class="nj-mode-t">${m.title}</span><span class="nj-mode-d">${m.desc}</span>
+              </button>`).join('')}
+            </div>
+          </section>
+
+          <section class="nj-step" aria-labelledby="nj-2">
+            <h2 id="nj-2"><span class="nj-n">2</span>${textLabel}</h2>
+            <div class="box composer">
+              ${source}
+              <label class="sr-only" for="req-text">${textLabel}</label>
+              <textarea id="req-text" name="text" placeholder="${d.mode === 'voice' ? 'Transkrip rekaman muncul di sini…' : 'Contoh: Tolong kirim notulen rapat ke Pak Budi, jadwalkan follow-up Jumat jam 10 dengan tim Makassar, dan minta Rina revisi proposal paling lambat Senin.'}">${esc(d.text)}</textarea>
+            </div>
+          </section>
+
+          <section class="nj-step" aria-labelledby="nj-3">
+            <h2 id="nj-3"><span class="nj-n">3</span>Keterangan <span class="muted" style="font-weight:400">· opsional</span></h2>
+            <div class="box nj-meta">
+              <div class="grid-2">
+                <label class="field"><span>Siapa yang meminta?</span><input class="input" name="requester" value="${esc(d.requester)}" placeholder="mis. Hendra, Kepala Operasional" /></label>
+                ${field('Diterima lewat', (l) => select({ name: 'channel', value: d.channel, options: ['Chat tim', 'Notulen rapat', 'Voice note', 'Email diteruskan', 'Teks ditempel'].map((c) => ({ value: c, label: c })), labelledBy: l }))}
+              </div>
+              <div class="field">
+                <span>Dokumen pendukung</span>
+                <div class="nj-atts">
+                  ${d.attachments.map((f, i) => `<span class="chip">${ico('attachment', 13)}<span class="mono" style="font-size:11.5px">${esc(f.name)}</span><button type="button" data-act="rm-att" data-i="${i}" aria-label="Hapus ${esc(f.name)}">${ico('cancel', 12)}</button></span>`).join('')}
+                  <label class="btn" style="cursor:pointer">${ico('attachment', 13)}Tambah dokumen<input type="file" data-act="attach" accept=".txt,.md,.eml,.csv,.json,text/plain" multiple class="sr-only" /></label>
+                </div>
+                <small class="muted">Dokumen yang dirujuk permintaan, mis. notulen yang harus dikirim. Isinya hanya dibaca sebagai data: perintah di dalamnya tidak pernah dijalankan.</small>
+              </div>
+              ${planner}
+            </div>
+          </section>
+
+          <div class="nj-foot">
+            <span class="muted">Belum ada yang dikirim. Setelah ini Anda meninjau setiap aksi.</span>
             <button class="btn btn-primary btn-lg" type="submit">${ico('sparkles', 14)}Buat rencana <span style="font-size:11px;opacity:.7">⌘↵</span></button>
           </div>
         </form>
       </div>
       <aside class="rail" aria-label="Pratinjau">
-        <section class="sec"><h3>Pratinjau cepat <span style="font-weight:400">· belum jadi rencana</span></h3><div id="preview">${previewHTML()}</div></section>
-        <section class="sec"><h3>Konteks</h3><dl class="kv">
+        <section class="sec"><h3>Yang akan dibuat <span style="font-weight:400">· pratinjau, belum disimpan</span></h3><div id="preview">${previewHTML()}</div></section>
+        <section class="sec"><h3>Dipakai untuk job ini</h3><dl class="kv">
           <dt>Organisasi</dt><dd>${esc(boot().settings.orgName || '—')}</dd>
-          <dt>Kontak</dt><dd>${boot().dataset.contacts.length || '<span class="c-amber">kosong</span>'}</dd>
-          <dt>Tgl acuan</dt><dd>${esc(E.humanDate(boot().referenceDate))}</dd>
+          <dt>Kontak</dt><dd>${boot().dataset.contacts.length ? `${boot().dataset.contacts.length} orang` : '<span class="c-amber">kosong</span>'}</dd>
+          <dt>"Hari ini"</dt><dd>${esc(E.humanDate(boot().referenceDate))}</dd>
         </dl></section>
       </aside>
     </div>`;
@@ -880,7 +912,7 @@ function updatePreview() {
 function renderQueue() {
     const q = boot().queue;
     const grp = (st) => q.filter((x) => x.action.status === st);
-    const head = `<div class="grid-row hd" role="row"><span></span><span>Aksi</span><span>Penerima</span><span>Konektor</span><span>Disetujui</span><span style="text-align:right">Status</span></div>`;
+    const head = `<div class="grid-row hd" role="row"><span></span><span>Aksi</span><span>Penerima</span><span>Dikirim ke</span><span>Disetujui oleh</span><span style="text-align:right">Status</span></div>`;
     const row = (x) => {
         const a = x.action;
         const ppl = peopleOf(a);
@@ -905,21 +937,21 @@ function renderQueue() {
     const section = (id, title, hint, list) => list.length ? `<section aria-labelledby="${id}"><div class="ghead"><h2 id="${id}">${title}</h2><span class="n">${list.length}</span>${hint ? `<span class="hint">${hint}</span>` : ''}</div><div class="box tbl-wrap" role="table" aria-labelledby="${id}">${head}${list.map(row).join('')}</div></section>` : '';
     const queued = grp('queued');
     return `
-    <header class="top"><h1>Antrean kirim</h1><span class="sub">${queued.length} aktif · jeda ${boot().dataset.rules.undoWindowSeconds} detik sebelum diteruskan ke konektor</span><span class="grow"></span><span class="mock-badge">Konektor mock</span></header>
+    <header class="top"><h1>Antrean kirim</h1><span class="sub">Aksi yang sudah disetujui menunggu ${boot().dataset.rules.undoWindowSeconds} detik sebelum dikirim. Urungkan kalau ada yang salah.</span><span class="grow"></span><span class="mock-badge">Konektor mock</span></header>
     <div class="page">
       ${q.length ? '' : `<div class="empty"><span class="empty-ico">${ico('queue', 20)}</span><h2>Antrean kosong</h2><p>Aksi muncul di sini setelah Anda menyetujuinya.</p></div>`}
-      ${section('q1', 'Bisa diurungkan', 'Urungkan = tidak ada yang diteruskan', queued)}
-      ${section('q2', 'Diteruskan', 'Ke konektor mock', grp('simulated').reverse())}
+      ${section('q1', 'Masih bisa diurungkan', 'Belum terkirim', queued)}
+      ${section('q2', 'Terkirim', 'Ke aplikasi tujuan (mock)', grp('simulated').reverse())}
       ${section('q3', 'Diurungkan', '', grp('undone').reverse())}
       ${q.length ? '<p class="muted" style="margin:0;font-size:12px">Setelah konektor nyata terhubung, email yang sudah diteruskan tidak bisa ditarik kembali.</p>' : ''}
     </div>`;
 }
 /* ------------------------------------------------------------ history */
 const AUDIT_LABEL = {
-    intake: 'Diterima', error: 'Input ditolak', injection_detected: 'Injeksi diabaikan', plan: 'Rencana dibuat', review: 'Reviewer kedua',
-    planner_fallback: 'Planner model gagal, pakai aturan', clarification_answered: 'Klarifikasi dijawab', escalate: 'Eskalasi', edit: 'Disunting',
+    intake: 'Diterima', error: 'Input ditolak', injection_detected: 'Instruksi tersisip diabaikan', plan: 'Rencana dibuat', review: 'Reviewer kedua',
+    planner_fallback: 'Model AI gagal, dipakai aturan Berezz', clarification_answered: 'Klarifikasi dijawab', escalate: 'Butuh keputusan manusia', edit: 'Disunting',
     acknowledge: 'Konfirmasi tambahan', approve_rejected: 'Persetujuan ditolak', approve: 'Disetujui', cancel: 'Dibatalkan', gate_blocked: 'Gerbang menolak',
-    queued: 'Masuk antrean', undo: 'Diurungkan', tool_result: 'Diteruskan (simulasi)',
+    queued: 'Masuk antrean', undo: 'Diurungkan', tool_result: 'Terkirim (mock)',
 };
 const AUDIT_DOT = { injection_detected: 'var(--amber)', approve: 'var(--green)', tool_result: 'var(--text)', escalate: 'var(--red)', gate_blocked: 'var(--red)', approve_rejected: 'var(--red)', undo: 'var(--text-3)' };
 function auditDetail(e) {
@@ -972,13 +1004,13 @@ function renderHistory() {
         const c = j.counts;
         const parts = [];
         if (c.done)
-            parts.push(`<span style="color:var(--text)">${c.done}/${c.total} diteruskan</span>`);
+            parts.push(`<span style="color:var(--text)">${c.done}/${c.total} terkirim</span>`);
         if (c.undone)
             parts.push(`${c.undone} diurungkan`);
         if (c.cancelled)
             parts.push(`${c.cancelled} dibatalkan`);
         if (c.escalated)
-            parts.push(`<span class="c-red">${c.escalated} eskalasi</span>`);
+            parts.push(`<span class="c-red">${c.escalated} butuh keputusan</span>`);
         if (c.answer + c.approve)
             parts.push(`<span class="c-amber">${c.answer + c.approve} terbuka</span>`);
         if (c.queued)
@@ -988,7 +1020,7 @@ function renderHistory() {
     return `
     <header class="top"><h1>Riwayat & audit</h1><span class="sub">${jobs.length} job</span><span class="grow"></span>
       <label class="search" style="width:220px;height:30px;border-color:var(--line-strong)">${ico('search', 14)}<span class="sr-only">Cari di riwayat</span><input id="hist-search" type="search" placeholder="Cari job atau orang" value="${esc(S.histQuery)}" /></label>
-      <span class="seg" role="group" aria-label="Saring status">${[['all', 'Semua'], ['open', 'Terbuka'], ['done', 'Selesai'], ['escalated', 'Eskalasi']].map(([k, l]) => `<button type="button" data-act="hist-status" data-s="${k}" aria-pressed="${S.histStatus === k}">${l}</button>`).join('')}</span>
+      <span class="seg" role="group" aria-label="Saring status">${[['all', 'Semua'], ['open', 'Terbuka'], ['done', 'Selesai'], ['escalated', 'Butuh keputusan']].map(([k, l]) => `<button type="button" data-act="hist-status" data-s="${k}" aria-pressed="${S.histStatus === k}">${l}</button>`).join('')}</span>
     </header>
     <div class="split">
       <div class="page">
@@ -1042,16 +1074,16 @@ function renderData() {
       <div class="page">
         <section><div class="ghead"><h2>Data organisasi</h2><span class="hint">Berezz hanya membaca sumber di sini</span></div>
           <div class="box row-list">
-            ${row('contacts', 'users', 'Kontak & zona waktu', ds.contacts.length ? `<span>${h.contacts} kontak</span>${h.duplicateFirstNames.length ? `<span>${h.duplicateFirstNames.length} nama ganda</span>` : ''}${h.withoutTimezone.length ? `<span class="c-amber">${h.withoutTimezone.length} tanpa zona waktu</span>` : ''}` : '<span class="c-amber">Kosong · setiap nama akan ditanyakan</span>', ds.contacts.length ? '<span class="tag tag-green">Ada</span>' : '<span class="tag tag-amber">Kosong</span>')}
-            ${row('rules', 'shield', 'Aturan operasional', `<span>${esc(t(ds.rules.officeHours.start))}–${esc(t(ds.rules.officeHours.end))} lokal</span><span>Salat Jumat ${esc(t(ds.rules.fridayPrayer.start))}–${esc(t(ds.rules.fridayPrayer.end))}</span><span>Maks ${ds.rules.maxClarificationRounds} putaran</span><span>Jeda ${ds.rules.undoWindowSeconds} dtk</span>`, ds.rules.isDefault ? '<span class="tag tag-amber">Bawaan</span>' : '<span class="tag tag-green">SOP</span>', ds.rules.isDefault ? '' : `<span class="mono muted" style="font-size:11.5px">${esc(ds.rules.source)}</span>`)}
-            ${row('holidays', 'calendar', 'Kalender libur', ds.holidays === null ? '<span class="c-amber">Kosong · tanggal ditandai “status libur tidak diketahui”</span>' : `<span>${ds.holidays.length} tanggal</span>`, ds.holidays === null ? '<span class="tag tag-amber">Belum tersedia</span>' : '<span class="tag tag-green">Ada</span>')}
-            ${row('documents', 'file', 'Dokumen & lampiran', '<span>Dilampirkan per job · selalu dibaca sebagai data</span>', '<span class="tag">Per job</span>')}
+            ${row('contacts', 'users', 'Kontak & zona waktu', ds.contacts.length ? `<span>${h.contacts} kontak</span>${h.duplicateFirstNames.length ? `<span>${h.duplicateFirstNames.length} nama ganda</span>` : ''}${h.withoutTimezone.length ? `<span class="c-amber">${h.withoutTimezone.length} tanpa zona waktu</span>` : ''}` : '<span class="c-amber">Kosong · setiap nama akan ditanyakan</span>', ds.contacts.length ? '<span class="tag tag-green">Terisi</span>' : '<span class="tag tag-amber">Kosong</span>')}
+            ${row('rules', 'shield', 'Aturan operasional', `<span>${esc(t(ds.rules.officeHours.start))}–${esc(t(ds.rules.officeHours.end))} lokal</span><span>Salat Jumat ${esc(t(ds.rules.fridayPrayer.start))}–${esc(t(ds.rules.fridayPrayer.end))}</span><span>Maks ${ds.rules.maxClarificationRounds} putaran</span><span>Jeda ${ds.rules.undoWindowSeconds} dtk</span>`, ds.rules.isDefault ? '<span class="tag tag-amber">Aturan bawaan</span>' : '<span class="tag tag-green">SOP</span>', ds.rules.isDefault ? '' : `<span class="mono muted" style="font-size:11.5px">${esc(ds.rules.source)}</span>`)}
+            ${row('holidays', 'calendar', 'Kalender libur', ds.holidays === null ? '<span class="c-amber">Belum diisi · klik untuk menambah tanggal</span>' : `<span>${ds.holidays.length} tanggal</span>`, ds.holidays === null ? '<span class="tag tag-amber">Belum diisi</span>' : '<span class="tag tag-green">Terisi</span>')}
+            ${row('documents', 'file', 'Dokumen & lampiran', '<span>Dilampirkan per job · selalu dibaca sebagai data</span>', '<span class="tag">Dilampirkan per job</span>')}
           </div>
         </section>
-        <section><div class="ghead"><h2>Konektor tool</h2><span class="hint">Mock · hanya dipanggil gerbang persetujuan</span></div>
+        <section><div class="ghead"><h2>Aplikasi tujuan</h2><span class="hint">Mock · hanya menerima aksi yang sudah disetujui</span></div>
           <div class="box row-list">
             ${['email', 'meeting', 'task'].map((t) => `<div class="row"><span class="aico">${appIcon(t, 16)}</span><span><span class="rt">${CONNECTOR[t].app}</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">${CONNECTOR[t].kind} · ${CONNECTOR[t].none}</span></span><span class="end"><span class="tag tag-green">Terhubung <span class="mock">· mock</span></span></span></div>`).join('')}
-            <div class="row"><span class="aico">${ico('agent', 15)}</span><span><span class="rt">Agent WorkBuddy (MCP)</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">Boleh membuat job & mengusulkan rencana · tidak bisa menyetujui</span></span><span class="tag">Hanya usul</span></div>
+            <div class="row"><span class="aico">${ico('agent', 15)}</span><span><span class="rt">Agent WorkBuddy (MCP)</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">Boleh membuat job & mengusulkan rencana · tidak bisa menyetujui</span></span><span class="tag">Hanya mengusulkan</span></div>
           </div>
         </section>
       </div>
@@ -1074,9 +1106,30 @@ function renderDataRail() {
       </dl>${r.isDefault ? '<p class="c-amber" style="font-size:12.5px;margin:12px 0 0">Ini aturan bawaan. Impor SOP organisasi (bagian <code>rules</code> di templat) agar setiap temuan menyebut sumber yang benar.</p>' : ''}</section>`;
     }
     if (S.dataSel === 'holidays') {
-        return `<div style="padding:16px 18px 6px"><h2 style="margin:0;font-size:15px;font-weight:600">Kalender libur</h2></div>
-      <section class="sec">${ds.holidays === null ? '<p style="margin:0;font-size:13px">Belum ada. Selama kosong, setiap rapat dan tenggat meminta konfirmasi bahwa tanggalnya bukan hari libur. Impor bagian <code>holidays</code> dari templat.</p>'
-            : ds.holidays.length ? ds.holidays.map((x) => `<div class="li" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:5px 0;font-size:12.5px"><span><b style="font-weight:500">${esc(E.shortDate(x.date))} ${x.date.slice(0, 4)}</b> <span class="muted">· ${esc(x.name)}</span></span><span class="mono muted" style="font-size:11px">${esc(x.source)}</span></div>`).join('') : '<p class="muted">Daftar kosong.</p>'}</section>`;
+        const list = ds.holidays || [];
+        const years = [...new Set(list.map((x) => x.date.slice(0, 4)))];
+        return `<div style="padding:16px 18px 6px">
+        <h2 style="margin:0;font-size:15px;font-weight:600">Kalender libur</h2>
+        <p class="muted" style="margin:4px 0 0;font-size:12.5px">${ds.holidays === null ? 'Belum diisi. Selama kosong, setiap rapat dan tenggat minta dicentang "sudah dipastikan bukan hari libur".' : `${list.length} tanggal. Rapat di tanggal ini akan dipindah; tenggat di tanggal ini butuh konfirmasi.`}</p>
+      </div>
+      <section class="sec"><h3>Tambah satu tanggal</h3>
+        <form data-form="holiday-one" class="hol-one">
+          ${field('Tanggal', (l) => datePicker({ name: 'date', value: '', labelledBy: l, placeholder: 'Pilih tanggal' }))}
+          <label class="field"><span>Nama</span><input class="input" name="name" placeholder="mis. Hari Raya Natal" /></label>
+          <button class="btn btn-primary" type="submit">Tambah</button>
+        </form>
+      </section>
+      <section class="sec"><h3>Tempel banyak sekaligus</h3>
+        <form data-form="holiday-list" style="display:flex;flex-direction:column;gap:8px">
+          <label class="sr-only" for="hol-text">Daftar hari libur, satu per baris</label>
+          <textarea id="hol-text" class="textarea" name="text" rows="5" placeholder="Satu tanggal per baris, contoh:\n2026-12-25 Hari Raya Natal\n24/12/2026 Cuti bersama Natal\n1 Januari 2027 Tahun Baru Masehi"></textarea>
+          <small class="muted" style="font-size:12px;line-height:1.5">Bisa disalin dari daftar libur nasional dan cuti bersama (SKB menteri) atau dari kolom Excel. Format tanggal yang dikenali: 2026-12-25, 25/12/2026, 25 Desember 2026. Tanggal yang sama akan diperbarui, bukan digandakan.</small>
+          <button class="btn" type="submit" style="align-self:flex-start">Tambahkan semua</button>
+        </form>
+      </section>
+      <section class="sec"><h3>Daftar <span>${list.length}</span></h3>
+        ${list.length ? years.map((y) => `<div class="hol-year">${y}</div>${list.filter((x) => x.date.startsWith(y)).map((x) => `<div class="hol-row"><span class="hol-date">${esc(E.shortDate(x.date))}</span><span class="hol-name">${esc(x.name)}</span><button class="btn btn-ghost btn-icon" type="button" data-act="hol-del" data-date="${esc(x.date)}" aria-label="Hapus ${esc(x.name)} ${esc(x.date)}">${ico('cancel', 13)}</button></div>`).join('')}`).join('') : '<p class="muted" style="margin:0;font-size:12.5px">Belum ada tanggal.</p>'}
+      </section>`;
     }
     if (S.dataSel === 'documents') {
         return `<div style="padding:16px 18px"><h2 style="margin:0;font-size:15px;font-weight:600">Dokumen & lampiran</h2><p style="font-size:13px;color:var(--text-2)">Notulen, ekspor chat, dan email dilampirkan saat membuat job. Isinya hanya dipakai sebagai konteks dan kutipan. Baris yang menyuruh agent (“AI: …”, “abaikan instruksi”) ditandai dan diabaikan.</p></div>`;
@@ -1107,6 +1160,20 @@ function renderDataRail() {
     </section>`;
 }
 /* ------------------------------------------------------------ settings */
+function renderGuide() {
+    const b = boot();
+    return guideHTML({
+        orgName: b.settings.orgName,
+        approver: b.settings.operatorName,
+        contacts: b.dataset.contacts.length,
+        holidaysReady: b.dataset.holidays !== null,
+        rulesFromSop: !b.dataset.rules.isDefault,
+        undoSeconds: b.dataset.rules.undoWindowSeconds,
+        maxRounds: b.dataset.rules.maxClarificationRounds,
+        modelPlanner: b.planner.modelAvailable ? b.planner.model : null,
+        install: b.install || null,
+    });
+}
 function renderSettings() {
     const s = boot().settings;
     return `
@@ -1160,9 +1227,11 @@ function render() {
             : r.name === 'history' ? renderHistory()
                 : r.name === 'data' ? renderData()
                     : r.name === 'settings' ? renderSettings()
-                        : r.name === 'setup' ? renderSetup()
-                            : renderInbox();
+                        : r.name === 'guide' ? renderGuide()
+                            : r.name === 'setup' ? renderSetup()
+                                : renderInbox();
     view.innerHTML = html;
+    updateGuideToc();
     if (S.dlg && $('#dlg').open)
         renderDialog();
     tick();
@@ -1313,16 +1382,32 @@ document.addEventListener('click', async (ev) => {
         case 'undo':
             await run(async () => { await actionCall(a, 'undo', {}, el.dataset.job || S.job?.id); render(); }, 'Diurungkan. Tidak ada yang diteruskan.');
             break;
-        case 'mode':
-            S.draft.mode = el.dataset.m || 'text';
-            if (el.dataset.m === 'voice')
-                S.draft.channel = 'Voice note';
+        case 'mode': {
+            // Follow the source with a matching channel, unless the person already picked another one.
+            const prev = INPUT_MODES.find((m) => m.mode === S.draft.mode);
+            const next = INPUT_MODES.find((m) => m.mode === el.dataset.m) || INPUT_MODES[0];
+            if (!prev || S.draft.channel === prev.channel)
+                S.draft.channel = next.channel;
+            S.draft.mode = next.mode;
             render();
             break;
+        }
         case 'planner':
             S.draft.planner = el.dataset.p || 'rules';
             render();
             break;
+        case 'hol-del':
+            await run(async () => { S.boot = { ...(await api(`/api/dataset/holidays/${el.dataset.date}`, { method: 'DELETE' })), token: S.token }; render(); }, 'Tanggal dihapus.');
+            break;
+        case 'goto':
+            ev.preventDefault();
+            document.getElementById(el.dataset.id || '')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            break;
+        case 'copy': {
+            const text = document.getElementById(el.dataset.copy || '')?.textContent || '';
+            navigator.clipboard?.writeText(text).then(() => toast('Disalin.'), () => toast('Tidak bisa menyalin otomatis; pilih teksnya lalu salin manual.', 'err'));
+            break;
+        }
         case 'listen':
             toggleListen();
             break;
@@ -1488,6 +1573,28 @@ document.addEventListener('submit', async (ev) => {
             render();
         }, 'Pengaturan disimpan.');
     }
+    if (kind === 'holiday-one') {
+        if (!v('date')) {
+            toast('Pilih tanggalnya dulu.', 'err');
+            return;
+        }
+        await run(async () => {
+            const out = await api('/api/dataset/holidays', { method: 'POST', body: { date: v('date'), name: v('name') } });
+            S.boot = { ...out, token: S.token };
+            S.dataSel = 'holidays';
+            render();
+        }, 'Hari libur ditambahkan.');
+    }
+    if (kind === 'holiday-list') {
+        await run(async () => {
+            const out = await api('/api/dataset/holidays', { method: 'POST', body: { text: v('text') } });
+            const { added, skipped, ...payload } = out;
+            S.boot = { ...payload, token: S.token };
+            S.dataSel = 'holidays';
+            render();
+            toast(`${added} tanggal ditambahkan.${skipped.length ? ` ${skipped.length} baris tidak terbaca: ${skipped.slice(0, 2).join('; ')}` : ''}`, skipped.length ? 'err' : 'ok');
+        });
+    }
     if (kind === 'addcontact') {
         const [role, city, ...aliases] = v('extra').split(';').map((x) => x.trim());
         await run(async () => {
@@ -1500,6 +1607,25 @@ document.addEventListener('submit', async (ev) => {
 $('#dlg').addEventListener('close', () => { S.dlg = null; });
 /* ------------------------------------------------------------ start */
 initControls();
+/** Guide page: mark the section being read in the "Di halaman ini" list. */
+function updateGuideToc() {
+    const links = document.querySelectorAll('.gd-toc a[data-id]');
+    if (!links.length)
+        return;
+    let current = links[0].dataset.id;
+    for (const a of Array.from(links)) {
+        const sec = document.getElementById(a.dataset.id || '');
+        if (sec && sec.getBoundingClientRect().top < 140)
+            current = a.dataset.id;
+    }
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4)
+        current = links[links.length - 1].dataset.id;
+    links.forEach((a) => { if (a.dataset.id === current)
+        a.setAttribute('aria-current', 'page');
+    else
+        a.removeAttribute('aria-current'); });
+}
+window.addEventListener('scroll', updateGuideToc, { passive: true });
 window.addEventListener('hashchange', () => { closeControl(false); onRoute(); });
 setInterval(tick, 1000);
 setInterval(() => { syncIfQueued().catch(() => { }); }, 1500);

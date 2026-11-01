@@ -955,7 +955,7 @@ function buildQuestions(action, session) {
             { value: `doc|${f.conflict.doc}`, label: `${f.conflict.docName} · ${shortDate(f.conflict.doc)}`, detail: f.conflict.quote },
         ];
     }
-    q.options.push({ value: UNKNOWN_ANSWER, label: 'Belum bisa dipastikan', detail: 'Dihitung satu putaran; setelah batas, aksi dieskalasi' });
+    q.options.push({ value: UNKNOWN_ANSWER, label: 'Saya belum tahu', detail: `Ditanyakan lagi; setelah ${dataset.rules.maxClarificationRounds} kali, aksi ditandai butuh keputusan` });
     return [q];
 }
 function refresh(action, session) {

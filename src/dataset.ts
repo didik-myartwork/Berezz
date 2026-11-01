@@ -322,3 +322,57 @@ export const DATASET_TEMPLATE = {
   },
   holidays: [{ date: 'YYYY-MM-DD', name: '', source: 'Sumber kalender' }],
 };
+
+/* ------------------------------------------------------------- holidays */
+
+const MONTH_NUM: Record<string, number> = {
+  januari: 1, jan: 1, january: 1, februari: 2, feb: 2, february: 2, maret: 3, mar: 3, march: 3, april: 4, apr: 4,
+  mei: 5, may: 5, juni: 6, jun: 6, june: 6, juli: 7, jul: 7, july: 7, agustus: 8, agu: 8, agt: 8, aug: 8, august: 8,
+  september: 9, sep: 9, sept: 9, oktober: 10, okt: 10, oct: 10, october: 10, november: 11, nov: 11,
+  desember: 12, des: 12, dec: 12, december: 12,
+};
+
+function validDate(y: number, m: number, d: number): string | null {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** Read one pasted line: a date in a common format followed by the holiday's name. */
+export function parseHolidayLine(line: string): { date: string; name: string } | null {
+  const t = line.trim().replace(/^[-*•\d]+[.)]\s+(?=\d)/, '');
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})\b[\s,;:\t|–—-]*(.*)$/.exec(t);
+  if (m) { const d = validDate(+m[1], +m[2], +m[3]); return d ? { date: d, name: m[4].trim() } : null; }
+  m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b[\s,;:\t|–—-]*(.*)$/.exec(t);
+  if (m) { const d = validDate(+m[3], +m[2], +m[1]); return d ? { date: d, name: m[4].trim() } : null; }
+  m = /^(?:\p{L}+,?\s+)?(\d{1,2})\s+(\p{L}+)\.?\s+(\d{4})\b[\s,;:\t|–—-]*(.*)$/u.exec(t);
+  if (m && MONTH_NUM[m[2].toLowerCase()]) { const d = validDate(+m[3], MONTH_NUM[m[2].toLowerCase()], +m[1]); return d ? { date: d, name: m[4].trim() } : null; }
+  return null;
+}
+
+/** Parse a pasted list (one holiday per line). Header rows and blank lines are skipped. */
+export function parseHolidayList(text: string): { holidays: Array<{ date: string; name: string }>; skipped: string[] } {
+  const holidays: Array<{ date: string; name: string }> = [];
+  const skipped: string[] = [];
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || /^(tanggal|date)\b/i.test(line)) continue;
+    const h = parseHolidayLine(line);
+    if (h) holidays.push({ date: h.date, name: h.name.replace(/^["']|["']$/g, '') || 'Hari libur' });
+    else skipped.push(line);
+  }
+  return { holidays, skipped };
+}
+
+/** Add or rename holidays (keyed by date) and keep the list sorted. Turns "not provided" into a list. */
+export function upsertHolidays(current: Dataset, items: Array<{ date: string; name: string }>, source: string): Dataset {
+  const byDate = new Map((current.holidays || []).map((h) => [h.date, h]));
+  for (const it of items) byDate.set(it.date, { date: it.date, name: it.name || 'Hari libur', source });
+  const holidays = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return { ...current, holidays, meta: current.meta.origin === 'empty' ? { ...current.meta, origin: 'manual' } : current.meta };
+}
+
+export function removeHoliday(current: Dataset, date: string): Dataset {
+  if (!current.holidays) return current;
+  return { ...current, holidays: current.holidays.filter((h) => h.date !== date) };
+}
