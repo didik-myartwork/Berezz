@@ -1,12 +1,10 @@
 # Hasil uji Berezz
 
-Dijalankan 2026-11-01: `npm run typecheck` (strict mode) dan `npm run build` lulus; `npm test`: **38 dari 38 tes lulus** — 20 skenario, 2 tes dataset, 7 kontrak MCP, dan 9 tes persistence (termasuk simpan lalu jalankan ulang server). `node tools/run-cases.mjs`: **20 dari 20 test case lulus** melalui server dan UI di Chrome.
+Dijalankan 2026-11-01 dengan `node tools/run-cases.mjs`. **20 dari 20 test case lulus**.
 
 > **Label:** test case dan dataset (`datasets/organisasi-uji`, organisasi fiktif) **dibuat tim Berezz** dengan gaya contoh test di handbook, karena dataset dan test resmi panitia belum diterima. Ganti `tests/cases/cases.json` dan dataset bila test resmi tersedia; runner yang sama bisa dipakai.
 
-Cara kerja: setiap case dijalankan dua kali. (1) Langsung ke engine dengan jam virtual — ini yang menentukan PASS/FAIL; 20 skenario ini juga masuk dalam `npm test`. (2) Diputar ulang lewat server dan UI Berezz sungguhan di Chrome untuk screenshot. Di server, tombol Setujui langsung memasukkan aksi ke antrean 60 detik, dan waktu dimajukan dengan jam uji (`--test-clock`).
-
-Tes persistence tambahan memastikan workspace korup atau berskema tak didukung menolak startup tanpa ditimpa, kegagalan simpan mempertahankan snapshot lama dan mengembalikan error, simpan atomik/private, dan beberapa snapshot disimpan berurutan.
+Cara kerja: setiap case dijalankan dua kali. (1) Langsung ke engine dengan jam virtual — ini yang menentukan PASS/FAIL, sama dengan `npm test`. (2) Diputar ulang lewat server dan UI Berezz sungguhan di Chrome untuk screenshot. Di server, tombol Setujui langsung memasukkan aksi ke antrean 60 detik, dan waktu dimajukan dengan jam uji (`--test-clock`).
 
 Error JavaScript di halaman selama run: tidak ada.
 

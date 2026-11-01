@@ -7,7 +7,8 @@
 
 import * as E from './engine.js';
 import { icon, type IconName } from './icons.js';
-import type { Action, AuditEntry, Contact, ContactRef, Dataset, Finding, FullJob, JobSummary, Settings, SimulatedResult } from './types.js';
+import { select, multiSelect, datePicker, timeSelect, initControls, closeControl, type Option } from './controls.js';
+import type { Action, ActionType, AuditEntry, Contact, ContactRef, Dataset, Finding, FullJob, JobSummary, Settings, SimulatedResult } from './types.js';
 
 type Boot = {
   settings: Settings & { planner?: string };
@@ -78,6 +79,7 @@ const S = {
   listening: false,
   busy: false,
   storageWarningShown: false,
+  connectorsExpanded: false,
   lastSig: '',
 };
 
@@ -271,6 +273,19 @@ const STATUS_TAG = {
   escalated: ['Eskalasi', 'tag-red'],
 };
 const TYPE_ICON: Record<string, IconName> = { email: 'mail', meeting: 'calendar', task: 'task' };
+
+/**
+ * The apps the simulated connectors stand in for. Shown so the flow reads like a real
+ * office setup, and ALWAYS labelled mock: nothing reaches Gmail, Google Calendar or Trello.
+ */
+const CONNECTOR: Record<ActionType, { app: string; icon: IconName; color: string; kind: string; none: string }> = {
+  email: { app: 'Gmail', icon: 'google', color: '#ea4335', kind: 'Email', none: 'Tidak ada email yang benar-benar terkirim' },
+  meeting: { app: 'Google Calendar', icon: 'google', color: '#4285f4', kind: 'Kalender', none: 'Tidak ada undangan kalender sungguhan' },
+  task: { app: 'Trello', icon: 'trello', color: '#0c66e4', kind: 'Task board', none: 'Tidak ada kartu Trello sungguhan' },
+};
+const ADAPTER_TYPE: Record<string, ActionType> = { email: 'email', kalender: 'meeting', 'task board': 'task' };
+const appIcon = (t: ActionType, size = 14) => `<span class="app-ico" style="color:${CONNECTOR[t].color}" aria-hidden="true">${ico(CONNECTOR[t].icon, size)}</span>`;
+const appTag = (t: ActionType) => `<span class="tag app-tag">${appIcon(t, 12)}${esc(CONNECTOR[t].app)}<span class="mock">· mock</span></span>`;
 const TYPE_LABEL = { email: 'Email', meeting: 'Rapat', task: 'Tugas' };
 
 function actionTitle(a: Action) {
@@ -296,7 +311,8 @@ function renderSide() {
   const dataWarn = !contactsReady() || b.dataset.holidays === null || b.dataset.rules.isDefault;
   const org = b.settings.orgName;
   const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-  $('#side').innerHTML = `
+  const side = $('#side');
+  side.innerHTML = `
     <a class="brand" href="#/settings" title="Pengaturan organisasi">
       <svg class="brand-mark" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="8" fill="currentColor"/><path d="M8.5 14.4l3.6 3.6 7.4-8" fill="none" stroke="var(--on-primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span class="brand-text"><span class="brand-name">Berezz</span><span class="brand-org${org ? '' : ' unset'}">${esc(org || 'Atur nama organisasi')}</span></span>
@@ -328,9 +344,15 @@ function renderSide() {
     </div>
     <div class="side-foot">
       <div class="sim-card">
-        <div style="display:flex;align-items:center;gap:8px"><span class="dot"></span><strong>Konektor: simulasi</strong></div>
-        <p>Email, kalender, dan task board belum terhubung. Aksi yang disetujui masuk ke tool simulasi.</p>
-        <p class="muted" style="font-size:12px">Data: ${b.dataset.meta.origin === 'empty' ? 'belum ada' : esc(b.dataset.meta.fileName || 'ditambah manual')}</p>
+        <button type="button" class="connector-toggle" data-act="connector-toggle" aria-expanded="${S.connectorsExpanded}" aria-controls="connector-list">
+          <span class="connector-toggle-label"><span class="dot"></span><strong>Konektor</strong></span>
+          <span class="mock-badge">mock</span>
+          <span class="connector-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="connector-list" class="connector-list"${S.connectorsExpanded ? '' : ' hidden'}>
+          <ul class="app-list">${(['email', 'meeting', 'task'] as ActionType[]).map((t) => `<li>${appIcon(t, 15)}<span>${CONNECTOR[t].app}</span><span class="muted">mock</span></li>`).join('')}</ul>
+          <p class="muted" style="font-size:12px">Data: ${b.dataset.meta.origin === 'empty' ? 'belum ada' : esc(b.dataset.meta.fileName || 'ditambah manual')}</p>
+        </div>
       </div>
       <div class="me">
         <span class="avatar" aria-hidden="true">${esc(initials(b.settings.operatorName))}</span>
@@ -452,7 +474,8 @@ function renderAction(job: FullJob, a: Action) {
     if (!result) throw new Error(`Hasil antrean ${a.id} tidak tersedia.`);
     const until = result.undoUntil;
     end = `<span class="bar" aria-hidden="true"><span data-bar="${esc(until)}" data-from="${esc(result.queuedAt)}"></span></span><span class="mono num" data-until="${esc(until)}" style="font-size:13px;font-weight:500"></span><button class="btn" type="button" data-act="undo" data-a="${a.id}">${ico('undo', 13)}Urungkan</button>`;
-  } else end = `<span class="tag ${cls}">${label}</span>`;
+  } else if (a.status === 'simulated') end = `<span class="tag ${cls}">Diteruskan ke ${esc(CONNECTOR[a.type].app)} <span class="mock">· mock</span></span>`;
+  else end = `<span class="tag ${cls}">${label}</span>`;
   return `
     <article class="act" aria-labelledby="t-${a.id}">
       <span class="aico" title="${TYPE_LABEL[a.type]}">${ico(TYPE_ICON[a.type], 15)}</span>
@@ -479,8 +502,8 @@ function renderAsk(job: FullJob, a: Action) {
   let input = '';
   if (q.input === 'text') input = `<form class="ask-form" data-form="answer" data-a="${a.id}" data-q="${esc(q.id)}"><label class="field"><span>Tulis isi pesan</span><textarea class="textarea" name="value" rows="4" required></textarea></label><div class="ask-row"><button class="btn btn-primary" type="submit">Pakai isi ini</button></div></form>`;
   if (q.input === 'line') input = `<form class="ask-form" data-form="answer" data-a="${a.id}" data-q="${esc(q.id)}"><div class="ask-row"><input class="input" name="value" required style="flex:1" /><button class="btn btn-primary" type="submit">Pakai</button></div></form>`;
-  if (q.input === 'date') input = `<form class="ask-form" data-form="answer" data-a="${a.id}" data-q="${esc(q.id)}"><div class="ask-row"><label class="sr-only" for="d-${a.id}">Tanggal lain</label><input id="d-${a.id}" class="input" type="date" name="value" required style="width:180px" /><button class="btn" type="submit">Pakai tanggal ini</button></div></form>`;
-  if (q.input === 'time') input = `<form class="ask-form" data-form="answer" data-a="${a.id}" data-q="${esc(q.id)}"><div class="ask-row"><label class="sr-only" for="tm-${a.id}">Jam</label><input id="tm-${a.id}" class="input" type="time" name="value" required style="width:140px" /><button class="btn btn-primary" type="submit">Pakai jam ini</button></div></form>`;
+  if (q.input === 'date') input = `<form class="ask-form" data-form="answer" data-a="${a.id}" data-q="${esc(q.id)}"><div class="ask-row">${datePicker({ name: 'value', value: '', label: 'Tanggal lain', placeholder: 'Pilih tanggal lain' })}<button class="btn" type="submit">Pakai tanggal ini</button></div></form>`;
+  if (q.input === 'time') input = `<form class="ask-form" data-form="answer" data-a="${a.id}" data-q="${esc(q.id)}"><div class="ask-row">${timeSelect({ name: 'value', value: '', label: 'Jam', from: 6, to: 21 })}<button class="btn btn-primary" type="submit">Pakai jam ini</button></div></form>`;
   let add = '';
   if (q.allowNewContact) {
     add = S.newContactFor === key ? `
@@ -488,9 +511,9 @@ function renderAsk(job: FullJob, a: Action) {
         <div class="grid-2">
           <label class="field"><span>Nama</span><input class="input" name="name" required value="${esc((q.mention || '').replace(/^(pak|bu|bapak|ibu|mbak|mas|kak|bang)\s+/i, ''))}" /></label>
           <label class="field"><span>Email</span><input class="input" name="email" type="email" required /></label>
-          <label class="field"><span>Zona waktu</span><select class="select" name="timezone"><option value="">Tidak diketahui</option><option>WIB</option><option>WITA</option><option>WIT</option></select></label>
+          ${field('Zona waktu', (l) => select({ name: 'timezone', value: '', options: TZ_OPTIONS('Tidak diketahui'), labelledBy: l }))}
           <label class="field"><span>Jabatan / peran</span><input class="input" name="role" /></label>
-          <label class="field"><span>Jenis</span><select class="select" name="kind"><option value="">Ikuti domain email</option><option value="internal">Internal</option><option value="external">Eksternal</option></select></label>
+          ${field('Jenis', (l) => select({ name: 'kind', value: '', options: KIND_OPTIONS('Ikuti domain email'), labelledBy: l }))}
         </div>
         <div class="ask-row"><button class="btn btn-primary" type="submit">Simpan ke kontak & pakai</button><button class="btn btn-ghost" type="button" data-act="newcontact-close">Batal</button></div>
       </form>` : `<button class="opt" type="button" data-act="newcontact" data-a="${a.id}"><span aria-hidden="true">${ico('add', 14)}</span><span class="opt-main"><b>Tambah kontak baru</b><span class="muted"> · disimpan ke data kontak organisasi</span></span><span></span></button>`;
@@ -528,17 +551,29 @@ function renderMore(job: FullJob, a: Action) {
     <dl class="props">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
     <p class="quote">${ico('quote', 13)} Sumber: ${a.source.quote ? `<q>${esc(a.source.quote)}</q> · karakter ${a.source.start}–${a.source.end}` : '<span class="c-red">tidak ada kutipan</span>'}</p>
     ${a.findings.length ? `<ul class="findings">${a.findings.map((f) => `<li class="sev-${f.severity}">${ico(sev[f.severity], 14)}<span>${esc(f.message)} <span class="mono muted" style="font-size:11px">${esc(f.code)}</span></span></li>`).join('')}</ul>` : ''}
-    ${a.result ? `<p class="quote">${ico('tool', 13)} ${esc(a.result.note)} <span class="mono">${esc(a.result.ref)}</span></p>` : ''}
+    ${a.result ? `<p class="quote">${appIcon(a.type, 13)} ${esc(CONNECTOR[a.type].app)} (mock) · ${esc(a.result.note)} <span class="mono">${esc(a.result.ref)}</span></p>` : ''}
     ${editable ? `<div style="display:flex;gap:6px"><button class="btn" type="button" data-act="edit" data-a="${a.id}">${ico('edit', 14)}${a.status === 'undone' ? 'Sunting & ajukan lagi' : 'Sunting'}</button>${a.status === 'undone' ? '' : `<button class="btn btn-ghost btn-danger" type="button" data-act="cancel" data-a="${a.id}">Batalkan aksi</button>`}</div>` : ''}
   </div>`;
 }
 
-function contactSelect(name: string, selected: string[], multiple: boolean) {
-  const cs = boot().dataset.contacts;
-  return `<select class="select" name="${name}" ${multiple ? `multiple size="${Math.min(6, Math.max(3, cs.length))}" style="height:auto"` : ''}>
-    ${multiple ? '' : '<option value="">— pilih —</option>'}
-    ${cs.map((c) => `<option value="${esc(c.id)}" ${selected.includes(c.id) ? 'selected' : ''}>${esc(c.name)}${c.role ? ` · ${esc(c.role)}` : ''}</option>`).join('')}
-  </select>`;
+let fieldSeq = 0;
+/** A labelled field around one of the custom controls (buttons cannot sit inside <label>). */
+function field(label: string, control: (labelledBy: string) => string, extra = '') {
+  const id = `fl-${++fieldSeq}`;
+  return `<div class="field" ${extra}><span id="${id}">${esc(label)}</span>${control(id)}</div>`;
+}
+
+const TZ_OPTIONS = (empty: string): Option[] => [{ value: '', label: empty }, { value: 'WIB', label: 'WIB', detail: 'Jakarta' }, { value: 'WITA', label: 'WITA', detail: 'Makassar' }, { value: 'WIT', label: 'WIT', detail: 'Jayapura' }];
+const KIND_OPTIONS = (empty: string): Option[] => [{ value: '', label: empty }, { value: 'internal', label: 'Internal' }, { value: 'external', label: 'Eksternal' }];
+
+function contactOptions(): Option[] {
+  return boot().dataset.contacts.map((c) => ({ value: c.id, label: c.name, detail: [c.role, c.timezone].filter(Boolean).join(' · ') }));
+}
+
+function contactSelect(name: string, selected: string[], multiple: boolean, labelledBy: string) {
+  return multiple
+    ? multiSelect({ name, values: selected, options: contactOptions(), placeholder: 'Pilih kontak', labelledBy })
+    : select({ name, value: selected[0] || '', options: [{ value: '', label: '— pilih —' }, ...contactOptions()], placeholder: 'Pilih kontak', labelledBy });
 }
 
 function renderEdit(job: FullJob, a: Action) {
@@ -546,26 +581,26 @@ function renderEdit(job: FullJob, a: Action) {
   let inner = '';
   if (a.type === 'email') {
     inner = `
-      <label class="field"><span>Kepada (Ctrl/⌘ untuk memilih beberapa)</span>${contactSelect('toIds', (F.to || []).map((x) => x.id), true)}</label>
+      ${field('Kepada', (l) => contactSelect('toIds', (F.to || []).map((x) => x.id), true, l))}
       <label class="field"><span>Subjek</span><input class="input" name="subject" value="${esc(F.subject || '')}" /></label>
       <label class="field"><span>Isi</span><textarea class="textarea" name="body" rows="7">${esc(F.body || '')}</textarea></label>`;
   } else if (a.type === 'meeting') {
     inner = `
       <label class="field"><span>Judul</span><input class="input" name="title" value="${esc(F.title || '')}" /></label>
-      <label class="field"><span>Peserta</span>${contactSelect('participantIds', (F.participants || []).map((x) => x.id), true)}</label>
+      ${field('Peserta', (l) => contactSelect('participantIds', (F.participants || []).map((x) => x.id), true, l))}
       <div class="grid-2">
-        <label class="field"><span>Tanggal</span><input class="input" type="date" name="date" value="${esc(F.date || '')}" /></label>
-        <label class="field"><span>Zona waktu</span><select class="select" name="timezone"><option value="">—</option>${['WIB', 'WITA', 'WIT'].map((z) => `<option ${F.timezone === z ? 'selected' : ''}>${z}</option>`).join('')}</select></label>
-        <label class="field"><span>Mulai</span><input class="input" type="time" name="start" value="${esc(F.start || '')}" /></label>
-        <label class="field"><span>Selesai</span><input class="input" type="time" name="end" value="${esc(F.end || '')}" /></label>
+        ${field('Tanggal', (l) => datePicker({ name: 'date', value: F.date, labelledBy: l }))}
+        ${field('Zona waktu', (l) => select({ name: 'timezone', value: F.timezone || '', options: TZ_OPTIONS('—'), labelledBy: l }))}
+        ${field('Mulai', (l) => timeSelect({ name: 'start', value: F.start, labelledBy: l }))}
+        ${field('Selesai', (l) => timeSelect({ name: 'end', value: F.end, labelledBy: l }))}
       </div>
       <label class="field"><span>Lokasi</span><input class="input" name="location" value="${esc(F.location || '')}" /></label>`;
   } else {
     inner = `
       <label class="field"><span>Tugas</span><input class="input" name="title" value="${esc(F.title || '')}" /></label>
       <div class="grid-2">
-        <label class="field"><span>Pemilik</span>${contactSelect('ownerId', F.owner ? [F.owner.id] : [], false)}</label>
-        <label class="field"><span>Tenggat</span><input class="input" type="date" name="due" value="${esc(F.due || '')}" /></label>
+        ${field('Pemilik', (l) => contactSelect('ownerId', F.owner ? [F.owner.id] : [], false, l))}
+        ${field('Tenggat', (l) => datePicker({ name: 'due', value: F.due, labelledBy: l }))}
       </div>`;
   }
   return `<form class="more ask-form" style="border:1px solid var(--line);border-radius:8px" data-form="edit" data-a="${a.id}">
@@ -700,7 +735,7 @@ function renderDialog() {
     <div class="dlg-head">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span class="mono muted" style="font-size:11.5px">${esc(job.id)} · ${a.id}</span><span class="tag mono">v${a.version}</span><span class="tag tag-iris">Konektor simulasi</span>${ext ? '<span class="tag tag-amber">Eksternal</span>' : ''}
+          <span class="mono muted" style="font-size:11.5px">${esc(job.id)} · ${a.id}</span><span class="tag mono">v${a.version}</span>${appTag(a.type)}${ext ? '<span class="tag tag-amber">Eksternal</span>' : ''}
         </div>
         <h2 id="dlg-title">${esc(title)}</h2>
       </div>
@@ -796,7 +831,7 @@ function renderNew() {
           <textarea id="req-text" name="text" placeholder="Tempel chat, notulen, atau transkrip di sini. Contoh: Tolong kirim notulen ke Pak … dan jadwalkan follow-up Jumat dengan tim …">${esc(d.text)}</textarea>
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 14px 12px;border-top:1px solid var(--line-soft)">
             <label style="display:flex;align-items:center;gap:8px"><span class="lbl-sm">Peminta</span><input class="input" name="requester" value="${esc(d.requester)}" style="width:170px;height:30px" placeholder="Nama" /></label>
-            <label style="display:flex;align-items:center;gap:8px"><span class="lbl-sm">Saluran</span><select class="select" name="channel" style="width:150px;height:30px">${['Chat tim', 'Notulen rapat', 'Voice note', 'Email diteruskan', 'Teks ditempel'].map((c) => `<option ${d.channel === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+            <div style="display:flex;align-items:center;gap:8px"><span class="lbl-sm" id="lbl-channel">Saluran</span>${select({ name: 'channel', value: d.channel, options: ['Chat tim', 'Notulen rapat', 'Voice note', 'Email diteruskan', 'Teks ditempel'].map((c) => ({ value: c, label: c })), labelledBy: 'lbl-channel', className: 'sel-sm' })}</div>
             ${planner}
           </div>
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 14px 12px">
@@ -872,7 +907,7 @@ function renderQueue() {
       <span class="aico" role="cell">${ico(TYPE_ICON[a.type], 15)}</span>
       <span role="cell" style="min-width:0"><a href="#/inbox/${esc(x.jobId)}" class="cell-t" style="display:block;color:var(--text);text-decoration:none">${esc(actionTitle(a))}</a><span class="cell-s">${esc(x.jobId)} · ${a.id} · v${a.result.version}</span></span>
       <span role="cell" class="cell">${esc(ppl.map((p) => (p.members ? `${p.name} (${p.members})` : p.name)).join(', '))}${ppl.some((p) => p.kind === 'external') ? ' <span class="tag tag-amber">Eksternal</span>' : ''}</span>
-      <span role="cell" class="cell">${esc(a.result.adapter)}</span>
+      <span role="cell" class="cell" style="display:flex;align-items:center;gap:6px">${appIcon(a.type, 14)}${esc(CONNECTOR[a.type].app)}<span class="mock">· mock</span></span>
       <span role="cell" class="cell">${esc(firstName(a.approvedBy || ''))} <span class="mono muted" style="font-size:11.5px">${esc(hhmm(a.approvedAt))}</span></span>
       <span role="cell" class="end">${end}</span>
     </div>`;
@@ -880,11 +915,11 @@ function renderQueue() {
   const section = (id: string, title: string, hint: string, list: Boot['queue']) => list.length ? `<section aria-labelledby="${id}"><div class="ghead"><h2 id="${id}">${title}</h2><span class="n">${list.length}</span>${hint ? `<span class="hint">${hint}</span>` : ''}</div><div class="box tbl-wrap" role="table" aria-labelledby="${id}">${head}${list.map(row).join('')}</div></section>` : '';
   const queued = grp('queued');
   return `
-    <header class="top"><h1>Antrean kirim</h1><span class="sub">${queued.length} aktif · jeda ${boot().dataset.rules.undoWindowSeconds} detik sebelum diteruskan ke konektor</span><span class="grow"></span><span class="tag tag-iris">Konektor simulasi</span></header>
+    <header class="top"><h1>Antrean kirim</h1><span class="sub">${queued.length} aktif · jeda ${boot().dataset.rules.undoWindowSeconds} detik sebelum diteruskan ke konektor</span><span class="grow"></span><span class="mock-badge">Konektor mock</span></header>
     <div class="page">
       ${q.length ? '' : `<div class="empty"><span class="empty-ico">${ico('queue', 20)}</span><h2>Antrean kosong</h2><p>Aksi muncul di sini setelah Anda menyetujuinya.</p></div>`}
       ${section('q1', 'Bisa diurungkan', 'Urungkan = tidak ada yang diteruskan', queued)}
-      ${section('q2', 'Diteruskan', 'Ke konektor simulasi', grp('simulated').reverse())}
+      ${section('q2', 'Diteruskan', 'Ke konektor mock', grp('simulated').reverse())}
       ${section('q3', 'Diurungkan', '', grp('undone').reverse())}
       ${q.length ? '<p class="muted" style="margin:0;font-size:12px">Setelah konektor nyata terhubung, email yang sudah diteruskan tidak bisa ditarik kembali.</p>' : ''}
     </div>`;
@@ -918,7 +953,10 @@ function auditDetail(e: AuditEntry): string {
     case 'acknowledge': return `${text('actionId')} · ${text('code')}`;
     case 'approve': return `${text('actionId')} v${text('version')} · ${text('fingerprint')}`;
     case 'queued': return `${text('actionId')} · ${text('ref')}`;
-    case 'tool_result': return `${text('actionId')} · ${text('ref')} lewat ${text('adapter')}`;
+    case 'tool_result': {
+      const t = ADAPTER_TYPE[text('adapter')];
+      return `${text('actionId')} · ${text('ref')} lewat ${t ? `${CONNECTOR[t].app} (mock)` : text('adapter')}`;
+    }
     case 'undo': return `${text('actionId')} · setelah ${number('afterSeconds')} detik`;
     case 'planner_fallback': return text('reason');
     default: return d.reason ? `${text('actionId')} · ${text('reason')}` : text('code');
@@ -980,7 +1018,7 @@ function renderHistory() {
             <dt>Aksi</dt><dd>${result(hj)}</dd>
             <dt>Reviewer</dt><dd>${hj.session.review ? `${hj.session.review.matched}/${hj.session.review.checked} cocok` : '—'}</dd>
             <dt>Penyetuju</dt><dd>${esc([...new Set(hj.session.actions.map((a) => a.approvedBy).filter(Boolean))].join(', ') || '—')}</dd>
-            <dt>Mode tool</dt><dd>Simulasi</dd>
+            <dt>Konektor</dt><dd>Mock: Gmail, Google Calendar, Trello</dd>
           </dl></section>
           <section class="sec"><h3>Jejak audit <span>${hj.session.audit.length}</span></h3>
             <ol style="list-style:none;margin:0;padding:0">${hj.session.audit.map((e) => `<li class="ev"><time>${esc(hhmm(e.at))}</time><span class="evdot" style="background:${AUDIT_DOT[e.type] || 'var(--text-4)'}"></span><div style="min-width:0"><b>${esc(AUDIT_LABEL[e.type] || e.type)}</b> <span class="muted">· ${esc(e.actor)}</span><div class="d">${esc(auditDetail(e))}</div></div></li>`).join('')}</ol>
@@ -1017,9 +1055,9 @@ function renderData() {
             ${row('documents', 'file', 'Dokumen & lampiran', '<span>Dilampirkan per job · selalu dibaca sebagai data</span>', '<span class="tag">Per job</span>')}
           </div>
         </section>
-        <section><div class="ghead"><h2>Konektor tool</h2><span class="hint">Hanya dipanggil gerbang persetujuan</span></div>
+        <section><div class="ghead"><h2>Konektor tool</h2><span class="hint">Mock · hanya dipanggil gerbang persetujuan</span></div>
           <div class="box row-list">
-            ${[['mail', 'Email', 'Tidak ada email terkirim'], ['calendar', 'Kalender', 'Tidak ada booking nyata'], ['task', 'Task board', 'Tidak ada kartu dibuat']].map(([ic, n, d]) => `<div class="row"><span class="aico">${ico(ic as IconName, 15)}</span><span><span class="rt">${n}</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">${d}</span></span><span class="tag tag-iris">Simulasi</span></div>`).join('')}
+            ${(['email', 'meeting', 'task'] as ActionType[]).map((t) => `<div class="row"><span class="aico">${appIcon(t, 16)}</span><span><span class="rt">${CONNECTOR[t].app}</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">${CONNECTOR[t].kind} · ${CONNECTOR[t].none}</span></span><span class="end"><span class="tag tag-green">Terhubung <span class="mock">· mock</span></span></span></div>`).join('')}
             <div class="row"><span class="aico">${ico('agent', 15)}</span><span><span class="rt">Agent WorkBuddy (MCP)</span><span class="toks" style="font-size:12.5px;color:var(--text-3)">Boleh membuat job & mengusulkan rencana · tidak bisa menyetujui</span></span><span class="tag">Hanya usul</span></div>
           </div>
         </section>
@@ -1067,8 +1105,8 @@ function renderDataRail() {
         <label class="field"><span>Nama</span><input class="input" name="name" required /></label>
         <label class="field"><span>Email</span><input class="input" name="email" type="email" required /></label>
         <div class="grid-2" style="grid-template-columns:1fr 1fr">
-          <label class="field"><span>Zona waktu</span><select class="select" name="timezone"><option value="">?</option><option>WIB</option><option>WITA</option><option>WIT</option></select></label>
-          <label class="field"><span>Jenis</span><select class="select" name="kind"><option value="">Ikuti domain</option><option value="internal">Internal</option><option value="external">Eksternal</option></select></label>
+          ${field('Zona waktu', (l) => select({ name: 'timezone', value: '', options: TZ_OPTIONS('Belum tahu'), labelledBy: l }))}
+          ${field('Jenis', (l) => select({ name: 'kind', value: '', options: KIND_OPTIONS('Ikuti domain'), labelledBy: l }))}
         </div>
         <label class="field"><span>Jabatan, kota, alias (opsional)</span><input class="input" name="extra" placeholder="mis. Manajer Ops; Jakarta; Pak Budi" /></label>
         <button class="btn btn-primary" type="submit">Simpan kontak</button>
@@ -1097,9 +1135,9 @@ function renderSettings() {
           </div></section>
         <section><div class="ghead"><h2>Waktu</h2></div>
           <div class="box grid-2" style="padding:14px">
-            <label class="field"><span>Zona waktu pengirim</span><select class="select" name="defaultTimezone">${['WIB', 'WITA', 'WIT'].map((z) => `<option ${s.defaultTimezone === z ? 'selected' : ''}>${z}</option>`).join('')}</select></label>
-            <label class="field"><span>Tanggal acuan</span><select class="select" name="refMode"><option value="system" ${s.refDate.mode === 'system' ? 'selected' : ''}>Jam sistem (hari ini)</option><option value="fixed" ${s.refDate.mode === 'fixed' ? 'selected' : ''}>Tanggal tetap (pengujian)</option></select></label>
-            <label class="field"><span>Tanggal tetap</span><input class="input" type="date" name="refFixed" value="${esc(s.refDate.fixed || '')}" /></label>
+            ${field('Zona waktu pengirim', (l) => select({ name: 'defaultTimezone', value: s.defaultTimezone, options: TZ_OPTIONS('').slice(1), labelledBy: l }))}
+            ${field('Tanggal acuan', (l) => select({ name: 'refMode', value: s.refDate.mode, options: [{ value: 'system', label: 'Jam sistem (hari ini)' }, { value: 'fixed', label: 'Tanggal tetap (pengujian)' }], labelledBy: l }))}
+            ${field('Tanggal tetap', (l) => datePicker({ name: 'refFixed', value: s.refDate.fixed, labelledBy: l }))}
           </div></section>
         <section><div class="ghead"><h2>Planner</h2><span class="hint">Siapa yang memecah permintaan menjadi aksi</span></div>
           <div class="box" style="padding:14px;display:flex;flex-direction:column;gap:8px;font-size:13px">
@@ -1118,6 +1156,7 @@ function renderSettings() {
 /* ------------------------------------------------------------ render */
 
 function render() {
+  closeControl(false);
   if (!S.boot) return;
   const storage = boot().storage;
   if (!storage?.writable && storage?.error && !S.storageWarningShown) {
@@ -1207,6 +1246,11 @@ document.addEventListener('click', async (ev) => {
   const a = el.dataset.a || '';
   const key = S.job ? `${S.job.id}:${a}` : '';
   switch (act) {
+    case 'connector-toggle':
+      S.connectorsExpanded = !S.connectorsExpanded;
+      el.setAttribute('aria-expanded', String(S.connectorsExpanded));
+      $<HTMLDivElement>('#connector-list').hidden = !S.connectorsExpanded;
+      break;
     case 'theme': {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = next;
@@ -1325,6 +1369,7 @@ document.addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const fd = new FormData(form);
   const v = (k: string) => String(fd.get(k) ?? '').trim();
+  if (kind === 'answer' && !v('value')) { toast('Pilih atau isi jawabannya dulu.', 'err'); return; }
   if (kind === 'answer') await run(async () => { await actionCall(form.dataset.a || '', 'answer', { questionId: form.dataset.q || '', value: v('value') }); render(); });
   if (kind === 'newcontact') {
     await run(async () => {
@@ -1378,7 +1423,8 @@ document.addEventListener('submit', async (ev) => {
 
 /* ------------------------------------------------------------ start */
 
-window.addEventListener('hashchange', onRoute);
+initControls();
+window.addEventListener('hashchange', () => { closeControl(false); onRoute(); });
 setInterval(tick, 1000);
 setInterval(() => { syncIfQueued().catch(() => {}); }, 1500);
 

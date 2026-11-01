@@ -68,6 +68,8 @@ const ICONS = {
   building: 'Building03Icon',
   stop: 'StopIcon',
   agent: 'AiBrain01Icon',
+  google: 'GoogleIcon',
+  trello: 'TrelloIcon',
 };
 
 const kebab = (k) => k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);

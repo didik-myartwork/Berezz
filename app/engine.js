@@ -496,23 +496,42 @@ function attachmentSummary(doc) {
         .map((l) => l.replace(/^(?:\d+[.)]|[-*•])\s*/, ''));
     return { title, bullets };
 }
-function contextLine(attachments, keys) {
+/**
+ * The attachment line to quote in a drafted reply. A line that shares the request's topic
+ * wins; otherwise the first line that names the recipient. Headers, signatures, notes in
+ * italics and injected instructions are never quoted.
+ */
+function contextLine(attachments, keys, topic = null) {
     const ks = keys.filter(Boolean).map(lower);
-    if (!ks.length)
+    const topicWords = lower(topic).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 3);
+    if (!ks.length && !topicWords.length)
         return null;
+    let best = null;
     for (const doc of attachments) {
         const lines = doc.text.split('\n');
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            if (/^\s*#/.test(line) || !/[a-z]/i.test(line))
+            if (/^\s*[#_]/.test(line) || !/[a-z]/i.test(line))
+                continue;
+            if (/^\s*(dari|kepada|untuk|cc|bcc|subjek|perihal|tanggal|from|to|subject|date|sent)\s*:/i.test(line))
                 continue;
             if (scanInjection(line, '', '', true).length)
                 continue;
-            if (ks.some((k) => hasWord(line, k)))
-                return { docId: doc.id, docName: doc.name, line: line.trim().replace(/^(?:\d+[.)]|[-*•])\s*/, ''), lineNo: i + 1 };
+            // A signature is little more than a name: "Dewi Anggraini — PT Logistik Maju".
+            let rest = lower(line);
+            for (const k of ks)
+                rest = rest.split(k).join(' ');
+            if (rest.split(/[^\p{L}]+/u).filter((w) => w.length > 2).length < 4)
+                continue;
+            const topicHits = topicWords.filter((w) => lower(line).includes(w)).length;
+            const named = ks.some((k) => hasWord(line, k));
+            const score = topicHits * 2 + (named ? 1 : 0);
+            if ((topicHits >= 2 || named) && (!best || score > best.score)) {
+                best = { docId: doc.id, docName: doc.name, line: line.trim().replace(/^(?:\d+[.)]|[-*•])\s*/, ''), lineNo: i + 1, score };
+            }
         }
     }
-    return null;
+    return best;
 }
 /* ---------------------------------------------------------------- planner */
 function newAction(id, type, clause) {
@@ -558,7 +577,7 @@ function planClause(clause, session, index, forcedType = null) {
         const wantsDoc = /\b(notulen|minutes|catatan rapat|lampiran|terlampir|dokumen|file|berkas|attachment|ringkas\w*|rangkum\w*|summary)\b/i.test(head);
         const doc = wantsDoc && !tail ? session.attachments[0] || null : null;
         const topic = tail ? null : topicOf(head, mentions);
-        const ctx = doc ? null : contextLine(session.attachments, [...people.resolved.flatMap((c) => [c.name, ...(c.aliases || [])]), ...people.unknown]);
+        const ctx = doc ? null : contextLine(session.attachments, [...people.resolved.flatMap((c) => [c.name, ...(c.aliases || [])]), ...people.unknown], topic);
         const greet = refs.length === 1 ? refs[0].name.split(' ')[0] : (en ? 'all' : 'Bapak/Ibu');
         let subject;
         let body;
@@ -590,7 +609,7 @@ function planClause(clause, session, index, forcedType = null) {
             subject = raw.length > 64 ? `${raw.slice(0, 63).replace(/\s+\S*$/, '')}…` : raw;
             body = [
                 en ? `Hi ${greet},` : `Halo ${greet},`, '',
-                en ? `Following up on: "${ctx.line}".` : `Menindaklanjuti catatan: "${ctx.line}".`,
+                en ? `Following up on: "${ctx.line.replace(/[.\s]+$/, '')}".` : `Menindaklanjuti catatan: "${ctx.line.replace(/[.\s]+$/, '')}".`,
                 en ? 'We will share an update as soon as it is confirmed.' : 'Kami akan mengabarkan perkembangannya segera setelah ada kepastian.', '',
                 en ? 'Regards,' : 'Salam,', settings.operatorName || '',
             ].join('\n').trim();
