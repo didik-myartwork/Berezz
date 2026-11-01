@@ -2,8 +2,6 @@
 
 > Hasil berikut mengikuti bukti di repo per 1 November 2026. Jangan mengklaim hemat waktu nyata: pembandingan dengan admin belum dilakukan.
 
-Draft pemetaan untuk formulir submission: `docs/submission-form-draft.md` (nama PT Artavista di sana hanya data dummy; jangan kirim sebelum diganti/dikonfirmasi).
-
 ## Project title
 Berezz — Chat-to-Action Copilot
 
