@@ -22,7 +22,9 @@ Buka `http://localhost:8787`. Saat pertama dibuka, workspace **kosong**: Berezz 
 
 Untuk mencoba tanpa data sendiri, impor `datasets/organisasi-uji/dataset.json` (organisasi fiktif buatan tim, bukan dataset resmi panitia).
 
-Opsi server: `--port 8787`, `--data ./data/workspace.json`. Workspace tersimpan di `data/workspace.json` (di-*gitignore*).
+Opsi server: `--port 8787`, `--data ./data/workspace.json`. Workspace tersimpan secara lokal dengan izin file terbatas di `data/workspace.json` (di-*gitignore*). Bila berkas rusak, Berezz berhenti tanpa menggantinya dengan workspace kosong. Bila penyimpanan gagal saat berjalan, perubahan baru diblokir dan server mengembalikan error.
+
+Workspace masih berupa JSON lokal tanpa enkripsi atau autentikasi akun. Gunakan hanya data demo/fiktif sampai kebutuhan perlindungan data organisasi nyata terpenuhi. `.env` dan berkas kunci API juga di-*gitignore*.
 
 ## Arsitektur singkat
 
@@ -51,7 +53,7 @@ BEREZZ_LLM_BASE_URL=… BEREZZ_LLM_API_KEY=… BEREZZ_LLM_MODEL=… npm start
 ## Uji
 
 ```bash
-npm test                 # unit + 20 test case + MCP
+npm test                 # 36 tes: engine + 20 skenario + MCP + persistence
 node tools/run-cases.mjs # jalankan 20 test case lewat UI nyata dan simpan screenshot
 ```
 

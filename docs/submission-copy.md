@@ -1,6 +1,6 @@
 # Teks submission — Berezz
 
-> Bagian bertanda **[ISI]** wajib diisi tim sendiri: hanya tim yang tahu persis bagaimana WorkBuddy dipakai. Jangan mengklaim yang tidak terjadi; handbook memberi penalti lebih berat untuk kegagalan yang disembunyikan.
+> Hasil berikut mengikuti bukti di repo per 1 November 2026. Jangan mengklaim hemat waktu nyata: pembandingan dengan admin belum dilakukan.
 
 ## Project title
 Berezz — Chat-to-Action Copilot
@@ -19,7 +19,7 @@ Chat berantakan jadi aksi kantor, setelah Anda setujui.
 - *Teknis:* server lokal Node menjadi satu sumber kebenaran dan menjalankan gerbang persetujuan, sehingga browser maupun agent tidak bisa melewatinya. Engine TypeScript deterministik melakukan grounding, validasi, klarifikasi (maks 3 putaran lalu eskalasi), reviewer kedua, gerbang berbasis versi + fingerprint, dan antrean 60 detik yang bisa diurungkan. Konektor masih simulasi.
 - *Agent dan prompt:* agent WorkBuddy terhubung lewat server MCP Berezz dengan dua skill (planner dan reviewer). Prompt mewajibkan kutipan sumber verbatim untuk setiap aksi, melarang mengarang penerima/tanggal/isi, dan memperlakukan lampiran sebagai data. Server tidak mempercayai prompt begitu saja: aksi tanpa kutipan ditolak, penerima dan waktu diturunkan ulang dari kutipan dan data organisasi, dan model hanya boleh menyumbang teks draf. MCP tidak punya tool approve/send/undo.
 
-**Business value.** Hasil terukur dari 20 test case buatan tim (`docs/test-results.md`, 1 November 2026): **20 dari 20 lulus**. Dari 32 aksi yang direncanakan, 15 langsung ditahan untuk klarifikasi karena detailnya ambigu atau tidak ada di data; 2 instruksi tersisip diabaikan; 17 percobaan menyetujui atau mengirim yang tidak sah ditolak gerbang; hanya 6 aksi yang mencapai konektor simulasi, semuanya setelah persetujuan atas versi yang sama. Waktu dari pesan masuk sampai rencana siap ditinjau: median 1 ms, maksimum 45 ms (planner aturan, tanpa model). Nilai bisnisnya: admin tidak lagi menyalin detail ke beberapa aplikasi, dan kesalahan penerima/jam/instruksi tersisip ditangkap sebelum terjadi. Penghematan waktu dibanding proses manual belum diukur dengan pengguna nyata; [ISI bila sudah diuji dengan admin sungguhan].
+**Business value.** Pada 20 kasus uji buatan tim, semua lulus; tes tersebut mencakup 32 aksi, 15 klarifikasi, 2 instruksi tersisip yang diabaikan, dan 17 percobaan aksi tak sah yang ditolak gerbang. Enam aksi simulasi mencapai konektor hanya setelah persetujuan versi yang sama. Ini adalah hasil fixture, bukan estimasi produksi. Waktu dan penghematan kerja dibanding proses manual belum diukur dengan admin nyata. Rincian dan batas pengujian ada di `docs/test-results.md`.
 
 ## Accountability sheet
 Lihat `docs/accountability-sheet.md` (1 halaman).
@@ -31,14 +31,14 @@ Lihat `docs/test-results.md` dan folder `screenshots/`. Test case dan dataset di
 `docs/architecture.png` (sumber: `docs/architecture.html`, penjelasan: `docs/architecture.md`).
 
 ## Product sharing — di mana WorkBuddy memberi nilai
-- **Di produk:** WorkBuddy adalah agent yang menerima pesan kerja dan mengusulkan rencana ke Berezz lewat MCP; skill reviewer WorkBuddy memberi pendapat kedua. Berezz memastikan agent tidak bisa menyetujui atau mengirim apa pun.
-- **Dalam proses build:** [ISI — bagian mana yang dibuat/dibantu di WorkBuddy, contoh prompt yang dipakai, screenshot bukti].
-- **Yang efektif:** [ISI].
-- **Keterbatasan yang ditemukan:** [ISI, mis. format konfigurasi MCP/skill yang perlu dicoba-coba].
-- **Pelajaran:** agent paling berguna ketika diberi wewenang mengusulkan, bukan memutuskan; batas itu harus ditegakkan oleh kode, bukan oleh prompt.
+
+WorkBuddy terhubung ke server Berezz melalui MCP stdio. Skill Planner mengusulkan job dan Skill Reviewer membaca job untuk mencari aksi yang hilang/ditambahkan. Server Berezz tidak menyediakan tool approve/send/undo untuk agent; persetujuan tetap dilakukan manusia di UI. Integrasi MCP dan prompt/skills tersedia di `workbuddy/` dan `mcp/`. Tes MCP otomatis memakai server tiruan; panduan repo mencatat uji manual ke Berezz lokal. Screenshot koneksi WorkBuddy masih perlu disertakan sebagai bukti submission.
+
+Pelajaran utamanya: WorkBuddy dapat menyusun rencana dan memberi opini kedua, sementara keputusan persetujuan berada di server dan UI Berezz. Model opsional tidak menggantikan grounding, validasi sumber, atau persetujuan. Konektor nyata belum dipasang; semua efek akhir masih simulasi.
 
 ## Source code
-[ISI — URL repo publik]. Pastikan `data/` tidak ikut (sudah di-*gitignore*) dan tidak ada kunci API di repo.
+
+Source code tersedia di repo lokal Berezz (branch `main`, commit `c42dcc6`). **Belum ada remote atau URL repo publik**, sehingga item ini belum siap dikirim. Saat mempublikasikan, sertakan `src/`, `app/`, `server.mjs`, `mcp/`, `workbuddy/`, tests, dan dokumen; jangan sertakan `data/`, `.env`, kunci API, atau data organisasi nyata.
 
 ## Demo video
 Ikuti `docs/demo-script.md` (target 6 menit).

@@ -23,6 +23,7 @@ const S = {
     draft: { mode: 'text', text: '', requester: '', channel: 'Chat tim', attachments: [], planner: 'rules', sourceFile: '' },
     listening: false,
     busy: false,
+    storageWarningShown: false,
     lastSig: '',
 };
 /* ------------------------------------------------------------ helpers */
@@ -1073,6 +1074,10 @@ function renderSettings() {
 function render() {
     if (!S.boot)
         return;
+    if (!S.boot.storage?.writable && S.boot.storage?.error && !S.storageWarningShown) {
+        S.storageWarningShown = true;
+        toast(`Penyimpanan belum aman: ${S.boot.storage.error}`, 'err');
+    }
     renderSide();
     const r = S.route;
     const view = $('#view');

@@ -18,6 +18,7 @@ type Boot = {
   planner: { modelAvailable: boolean; model: string | null };
   referenceDate: string;
   now: string;
+  storage?: { writable: boolean; error: string | null };
   token?: string;
 };
 
@@ -38,6 +39,7 @@ const S = {
   draft: { mode: 'text', text: '', requester: '', channel: 'Chat tim', attachments: [] as Array<{ name: string; text: string }>, planner: 'rules', sourceFile: '' },
   listening: false,
   busy: false,
+  storageWarningShown: false,
   lastSig: '',
 };
 
@@ -1044,6 +1046,10 @@ function renderSettings() {
 
 function render() {
   if (!S.boot) return;
+  if (!S.boot.storage?.writable && S.boot.storage?.error && !S.storageWarningShown) {
+    S.storageWarningShown = true;
+    toast(`Penyimpanan belum aman: ${S.boot.storage.error}`, 'err');
+  }
   renderSide();
   const r = S.route;
   const view = $('#view');

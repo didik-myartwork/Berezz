@@ -21,6 +21,7 @@ import { extname, join, dirname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as E from './app/engine.js';
 import * as D from './app/dataset.js';
+import { WorkspaceStore } from './app/persistence.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const argPort = process.argv.indexOf('--port');
@@ -28,6 +29,14 @@ const PORT = Number(argPort > 0 ? process.argv[argPort + 1] : process.env.BEREZZ
 const argData = process.argv.indexOf('--data');
 const DATA_FILE = argData > 0 ? process.argv[argData + 1] : process.env.BEREZZ_DATA || join(ROOT, 'data', 'workspace.json');
 const UI_TOKEN = randomBytes(16).toString('hex');
+const store = new WorkspaceStore(DATA_FILE, {
+  exists: (path) => existsSync(path),
+  read: (path) => readFile(path, 'utf8'),
+  mkdirParent: (path) => mkdir(dirname(path), { recursive: true }),
+  write: (path, contents) => writeFile(path, contents, { mode: 0o600 }),
+  rename,
+});
+let storageFailure = null;
 // Test-only clock: `--test-clock` enables POST /api/test/advance so automated runs can
 // cross the undo window without waiting. Never enable it for real use.
 const TEST_CLOCK = process.argv.includes('--test-clock');
@@ -47,29 +56,38 @@ function emptyWorkspace() {
 }
 
 let ws = emptyWorkspace();
-let saving = Promise.resolve();
 
 async function load() {
-  if (!existsSync(DATA_FILE)) return;
-  try {
-    const raw = JSON.parse(await readFile(DATA_FILE, 'utf8'));
-    ws = { ...emptyWorkspace(), ...raw };
-    ws.settings = { ...D.defaultSettings(), ...raw.settings };
-    ws.dataset = { ...D.emptyDataset(), ...raw.dataset, timezones: D.TIMEZONES };
-  } catch (e) {
-    console.error(`Gagal membaca ${DATA_FILE}: ${e.message}. Mulai dengan workspace kosong.`);
-  }
+  ws = await store.load(emptyWorkspace, (value) => {
+    if (!value || typeof value !== 'object') throw new Error('Isi workspace bukan objek JSON.');
+    const raw = value;
+    if (raw.version !== 1 || !raw.settings || typeof raw.settings !== 'object' || !raw.dataset || typeof raw.dataset !== 'object' || !Array.isArray(raw.jobs)) {
+      throw new Error('Struktur workspace tidak lengkap atau versinya tidak didukung.');
+    }
+    if (!Array.isArray(raw.dataset.contacts) || !Array.isArray(raw.dataset.documents) || !raw.dataset.rules || typeof raw.dataset.rules !== 'object') {
+      throw new Error('Dataset workspace tidak lengkap.');
+    }
+    return {
+      ...emptyWorkspace(),
+      ...raw,
+      settings: { ...D.defaultSettings(), ...raw.settings },
+      dataset: { ...D.emptyDataset(), ...raw.dataset, timezones: D.TIMEZONES },
+      jobs: raw.jobs,
+    };
+  });
 }
 
 function save() {
-  const snapshot = JSON.stringify(ws, null, 1);
-  saving = saving.then(async () => {
-    await mkdir(dirname(DATA_FILE), { recursive: true });
-    const tmp = `${DATA_FILE}.tmp`;
-    await writeFile(tmp, snapshot);
-    await rename(tmp, DATA_FILE);
-  }).catch((e) => console.error('Gagal menyimpan workspace:', e.message));
-  return saving;
+  const pending = store.save(ws);
+  pending.catch((e) => {
+    storageFailure = e;
+    console.error('Workspace Berezz tidak tersimpan:', e.message);
+  });
+  return pending;
+}
+
+function assertStorageWritable() {
+  if (storageFailure) throw httpError(503, `Penyimpanan workspace gagal; perubahan baru dihentikan agar tidak memberi kesan sudah tersimpan. ${storageFailure.message}`);
 }
 
 const SESSION_KEYS = ['systemDate', 'rawInput', 'attachments', 'actions', 'findingsGlobal', 'audit', 'planVersion', 'review', 'planner', 'metrics'];
@@ -114,6 +132,7 @@ function jobState(job) {
 }
 
 function settleAll(now = nowMs()) {
+  if (storageFailure) return;
   let changed = false;
   for (const job of ws.jobs) {
     if (!(job.session.actions || []).some((a) => a.status === 'queued')) continue;
@@ -143,6 +162,8 @@ function bootstrap() {
     planner: { modelAvailable: llmReady(), model: llmReady() ? LLM.model : null },
     referenceDate: E.referenceDate(ws.settings, new Date(), ws.dataset.timezones),
     now: new Date(nowMs()).toISOString(),
+    storage: { writable: !storageFailure, error: storageFailure?.message || null },
+    storage: { writable: !storageFailure, error: storageFailure?.message || null },
   };
 }
 
@@ -309,6 +330,7 @@ async function route(req, res) {
 
   /* ---- agent surface: no approval, no undo, no settings ---- */
   if (p.startsWith('/api/agent/')) {
+    if (m !== 'GET') assertStorageWritable();
     const body = m === 'POST' ? await readBody(req) : {};
     if (m === 'POST' && p === '/api/agent/jobs') {
       const out = await createJob(body, { actor: AGENT_ACTOR, source: 'workbuddy' });
@@ -338,6 +360,7 @@ async function route(req, res) {
   }
   if (m === 'GET' && p === '/api/template') return send(res, 200, D.DATASET_TEMPLATE, { 'content-disposition': 'attachment; filename="berezz-templat-dataset.json"' });
 
+  if (m !== 'GET') assertStorageWritable();
   // Every UI mutation must carry the per-run token handed to the page.
   if (m !== 'GET' && req.headers['x-berezz-token'] !== UI_TOKEN) throw httpError(403, 'Token UI tidak valid. Muat ulang halaman Berezz.');
   const body = m === 'GET' ? {} : await readBody(req);
@@ -450,11 +473,16 @@ function agentView(job) {
   };
 }
 
-await load();
+try {
+  await load();
+} catch (e) {
+  console.error(`Berezz berhenti demi menjaga data workspace: ${e.message}`);
+  process.exit(1);
+}
 createServer((req, res) => {
   route(req, res).catch((e) => {
     if (!e.status) console.error(e);
-    send(res, e.status || 400, { error: e.message });
+    send(res, e.status || 500, { error: e.message });
   });
 }).on('error', (e) => {
   if (e.code === 'EADDRINUSE') console.error(`Port ${PORT} sudah dipakai proses lain. Hentikan proses itu atau jalankan: node server.mjs --port 8790`);

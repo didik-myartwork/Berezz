@@ -29,6 +29,8 @@ Tencent Cloud AI CAN DO IT Indonesia Hackathon 2026, Challenge B "The Office Age
 ## Capabilities and Constraints
 
 - Structured plan with source quotes; concise clarification (max 3 rounds, then escalation); office hours, Friday prayer and holidays checked in every participant's local zone; exact-detail approval with version + fingerprint; extra confirmation for external, multi-recipient and unknown-holiday cases; embedded instructions treated as data; second reviewer pass; 60-second undo; audit export.
+- Corrupt or unsupported workspace files now fail closed without overwrite. Failed saves return an error and block further mutations until restart.
+- This is a local single-operator prototype; the workspace JSON is plaintext and is not suitable for shared production use with confidential data.
 - Never guess a recipient, address, date, time or message body.
 - Never give an agent an approval or send capability.
 

@@ -26,6 +26,6 @@ Tinjau email ke vendor: penerima eksternal, isi berlabel draf, centang wajib, to
 Buka **Riwayat** → jejak audit: permintaan, injeksi diabaikan, rencana, jawaban, versi, siapa menyetujui, hasil simulasi. Ekspor JSON.
 
 ## 5:30–6:00 — WorkBuddy dan refleksi
-Tunjukkan agent WorkBuddy membuat job lewat MCP (job muncul bertanda "dari WorkBuddy") dan bahwa agent tidak punya tool menyetujui. Refleksi singkat: [ISI — bagaimana WorkBuddy membantu build, apa yang dipelajari]. Sebut keterbatasan jujur: konektor masih simulasi, test case dan dataset buatan tim, planner bawaan berbasis aturan.
+Tunjukkan WorkBuddy membuat job lewat MCP (job muncul bertanda "dari WorkBuddy") dan bahwa agent tidak punya tool menyetujui. Jelaskan bagaimana WorkBuddy Planner/Reviewer membantu menyusun dan meninjau rencana. Sebut keterbatasan dengan jujur: konektor masih simulasi, test case dan dataset buatan tim, model planner opsional dan belum menjadi default.
 
 Rekam 5–8 menit. Bila ada langkah yang gagal saat rekaman, jangan dipotong: jelaskan.
