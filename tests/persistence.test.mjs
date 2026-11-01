@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -118,4 +119,64 @@ test('concurrent snapshots are serialized in request order', async () => {
   ]);
   assert.deepEqual(JSON.parse(io.files.get('/data/workspace.json')), { version: 1, revision: 3 });
   assert.deepEqual([...io.files.keys()], ['/data/workspace.json']);
+});
+
+/* ---------------------------------------------------------- save → restart */
+
+import { emptyWorkspace, normalizeWorkspace } from '../app/workspace.js';
+import * as D from '../app/dataset.js';
+
+test('a workspace in the shape the server writes passes the startup validator', () => {
+  const ws = emptyWorkspace();
+  ws.settings.orgName = 'PT Uji';
+  const text = readFileSync(join(process.cwd(), 'datasets/organisasi-uji/dataset.json'), 'utf8');
+  ws.dataset = D.importDataset(ws.dataset, { fileName: 'dataset.json', text }).dataset;
+  ws.jobs.push({ id: 'JOB-0001', title: 't', session: { rawInput: 'x', actions: [], audit: [] } });
+  const reloaded = normalizeWorkspace(JSON.parse(JSON.stringify(ws)));
+  assert.equal(reloaded.settings.orgName, 'PT Uji');
+  assert.equal(reloaded.dataset.contacts.length, ws.dataset.contacts.length);
+  assert.equal(reloaded.jobs[0].id, 'JOB-0001');
+  assert.throws(() => normalizeWorkspace({ ...ws, jobs: [{ title: 'tanpa id' }] }), /Job ke-1/);
+});
+
+async function startServer(dataFile, port) {
+  const child = spawn(process.execPath, ['server.mjs', '--data', dataFile, '--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+  await new Promise((resolve, reject) => {
+    child.stdout.setEncoding('utf8').on('data', (chunk) => { if (chunk.includes('berjalan')) resolve(); });
+    child.once('exit', (code) => reject(new Error(`server berhenti (kode ${code}): ${stderr}`)));
+  });
+  const base = `http://127.0.0.1:${port}`;
+  const { token } = await (await fetch(`${base}/api/bootstrap`)).json();
+  const call = async (method, path, body) => {
+    const res = await fetch(base + path, { method, headers: { 'content-type': 'application/json', 'x-berezz-token': token }, body: body === undefined ? undefined : JSON.stringify(body) });
+    return { status: res.status, data: await res.json() };
+  };
+  const stop = () => new Promise((resolve) => { child.once('exit', resolve); child.kill(); });
+  return { call, stop };
+}
+
+test('server restarts on the workspace it saved itself, keeping settings, data and jobs', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'berezz-restart-'));
+  const dataFile = join(directory, 'workspace.json');
+  const port = 18000 + Math.floor(Math.random() * 1000);
+  try {
+    const first = await startServer(dataFile, port);
+    assert.equal((await first.call('PUT', '/api/settings', { orgName: 'PT Restart' })).status, 200);
+    const text = await readFile(join(process.cwd(), 'datasets/organisasi-uji/dataset.json'), 'utf8');
+    assert.equal((await first.call('POST', '/api/dataset/import', { fileName: 'dataset.json', text })).status, 200);
+    const job = await first.call('POST', '/api/jobs', { text: 'Buat tugas revisi proposal untuk Rina Senin.', channel: 'chat' });
+    assert.equal(job.status, 201);
+    await first.stop();
+
+    const second = await startServer(dataFile, port);
+    const boot = await second.call('GET', '/api/bootstrap');
+    await second.stop();
+    assert.equal(boot.data.settings.orgName, 'PT Restart');
+    assert.ok(boot.data.dataset.contacts.length > 0);
+    assert.deepEqual(boot.data.jobs.map((j) => j.id), [job.data.job.id]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

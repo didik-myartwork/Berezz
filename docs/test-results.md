@@ -1,6 +1,6 @@
 # Hasil uji Berezz
 
-Dijalankan 2026-11-01: `npm run typecheck` (strict mode) dan `npm run build` lulus; `npm test`: **36 dari 36 tes lulus** — 20 skenario, 2 tes dataset, 7 kontrak MCP, dan 7 tes persistence. `node tools/run-cases.mjs`: **20 dari 20 test case lulus** melalui server dan UI di Chrome.
+Dijalankan 2026-11-01: `npm run typecheck` (strict mode) dan `npm run build` lulus; `npm test`: **38 dari 38 tes lulus** — 20 skenario, 2 tes dataset, 7 kontrak MCP, dan 9 tes persistence (termasuk simpan lalu jalankan ulang server). `node tools/run-cases.mjs`: **20 dari 20 test case lulus** melalui server dan UI di Chrome.
 
 > **Label:** test case dan dataset (`datasets/organisasi-uji`, organisasi fiktif) **dibuat tim Berezz** dengan gaya contoh test di handbook, karena dataset dan test resmi panitia belum diterima. Ganti `tests/cases/cases.json` dan dataset bila test resmi tersedia; runner yang sama bisa dipakai.
 

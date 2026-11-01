@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import * as E from './app/engine.js';
 import * as D from './app/dataset.js';
 import { WorkspaceStore } from './app/persistence.js';
+import { emptyWorkspace, normalizeWorkspace } from './app/workspace.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const argPort = process.argv.indexOf('--port');
@@ -51,30 +52,10 @@ const llmReady = () => Boolean(LLM.baseUrl && LLM.apiKey && LLM.model);
 
 /* ------------------------------------------------------------ workspace */
 
-function emptyWorkspace() {
-  return { version: 1, seq: 0, settings: D.defaultSettings(), dataset: D.emptyDataset(), jobs: [] };
-}
-
 let ws = emptyWorkspace();
 
 async function load() {
-  ws = await store.load(emptyWorkspace, (value) => {
-    if (!value || typeof value !== 'object') throw new Error('Isi workspace bukan objek JSON.');
-    const raw = value;
-    if (raw.version !== 1 || !raw.settings || typeof raw.settings !== 'object' || !raw.dataset || typeof raw.dataset !== 'object' || !Array.isArray(raw.jobs)) {
-      throw new Error('Struktur workspace tidak lengkap atau versinya tidak didukung.');
-    }
-    if (!Array.isArray(raw.dataset.contacts) || !Array.isArray(raw.dataset.documents) || !raw.dataset.rules || typeof raw.dataset.rules !== 'object') {
-      throw new Error('Dataset workspace tidak lengkap.');
-    }
-    return {
-      ...emptyWorkspace(),
-      ...raw,
-      settings: { ...D.defaultSettings(), ...raw.settings },
-      dataset: { ...D.emptyDataset(), ...raw.dataset, timezones: D.TIMEZONES },
-      jobs: raw.jobs,
-    };
-  });
+  ws = await store.load(emptyWorkspace, normalizeWorkspace);
 }
 
 function save() {
