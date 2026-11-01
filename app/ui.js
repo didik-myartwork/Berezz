@@ -791,6 +791,17 @@ const INPUT_MODES = [
     { mode: 'file', icon: 'upload', title: 'Unggah berkas', desc: 'Notulen atau ekspor chat (.txt, .md, .eml). Isinya jadi teks permintaan.', channel: 'Notulen rapat' },
     { mode: 'voice', icon: 'mic', title: 'Rekam suara', desc: 'Bicara dalam Bahasa Indonesia, lalu periksa transkripnya. Chrome/Edge.', channel: 'Voice note' },
 ];
+function selectInputMode(mode) {
+    const next = INPUT_MODES.find((option) => option.mode === mode) || INPUT_MODES[0];
+    if (!next)
+        return;
+    const previous = INPUT_MODES.find((option) => option.mode === S.draft.mode);
+    if (!previous || S.draft.channel === previous.channel)
+        S.draft.channel = next.channel;
+    S.draft.mode = next.mode;
+    render();
+    document.querySelector(`[data-act="mode"][data-m="${next.mode}"]`)?.focus();
+}
 function renderNew() {
     const d = S.draft;
     const sr = speechRecognitionConstructor();
@@ -820,7 +831,7 @@ function renderNew() {
           <section class="nj-step" aria-labelledby="nj-1">
             <h2 id="nj-1"><span class="nj-n">1</span>Dari mana permintaannya?</h2>
             <div class="nj-modes" role="radiogroup" aria-labelledby="nj-1">
-              ${INPUT_MODES.map((m) => `<button type="button" role="radio" aria-checked="${d.mode === m.mode}" class="nj-mode" data-act="mode" data-m="${m.mode}">
+              ${INPUT_MODES.map((m) => `<button type="button" role="radio" aria-checked="${d.mode === m.mode}" tabindex="${d.mode === m.mode ? '0' : '-1'}" class="nj-mode" data-act="mode" data-m="${m.mode}">
                 <span class="nj-mode-ico">${ico(m.icon, 16)}</span><span class="nj-mode-t">${m.title}</span><span class="nj-mode-d">${m.desc}</span>
               </button>`).join('')}
             </div>
@@ -1110,7 +1121,7 @@ function renderDataRail() {
         const years = [...new Set(list.map((x) => x.date.slice(0, 4)))];
         return `<div style="padding:16px 18px 6px">
         <h2 style="margin:0;font-size:15px;font-weight:600">Kalender libur</h2>
-        <p class="muted" style="margin:4px 0 0;font-size:12.5px">${ds.holidays === null ? 'Belum diisi. Selama kosong, setiap rapat dan tenggat minta dicentang "sudah dipastikan bukan hari libur".' : `${list.length} tanggal. Rapat di tanggal ini akan dipindah; tenggat di tanggal ini butuh konfirmasi.`}</p>
+        <p class="muted" style="margin:4px 0 0;font-size:12.5px">${ds.holidays === null ? 'Belum diisi. Selama kosong, setiap rapat dan tenggat minta dicentang "sudah dipastikan bukan hari libur".' : `${list.length} tanggal. Rapat pada tanggal libur meminta Anda memilih usulan slot bila tersedia; tenggat pada tanggal libur perlu dikonfirmasi.`}</p>
       </div>
       <section class="sec"><h3>Tambah satu tanggal</h3>
         <form data-form="holiday-one" class="hol-one">
@@ -1382,16 +1393,9 @@ document.addEventListener('click', async (ev) => {
         case 'undo':
             await run(async () => { await actionCall(a, 'undo', {}, el.dataset.job || S.job?.id); render(); }, 'Diurungkan. Tidak ada yang diteruskan.');
             break;
-        case 'mode': {
-            // Follow the source with a matching channel, unless the person already picked another one.
-            const prev = INPUT_MODES.find((m) => m.mode === S.draft.mode);
-            const next = INPUT_MODES.find((m) => m.mode === el.dataset.m) || INPUT_MODES[0];
-            if (!prev || S.draft.channel === prev.channel)
-                S.draft.channel = next.channel;
-            S.draft.mode = next.mode;
-            render();
+        case 'mode':
+            selectInputMode(el.dataset.m || 'text');
             break;
-        }
         case 'planner':
             S.draft.planner = el.dataset.p || 'rules';
             render();
@@ -1439,6 +1443,19 @@ document.addEventListener('click', async (ev) => {
     }
 });
 document.addEventListener('keydown', (ev) => {
+    const target = ev.target;
+    const modeButton = target instanceof Element ? target.closest('[data-act="mode"][role="radio"]') : null;
+    if (modeButton && ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(ev.key)) {
+        const index = INPUT_MODES.findIndex((mode) => mode.mode === modeButton.dataset.m);
+        if (index >= 0) {
+            ev.preventDefault();
+            const direction = ev.key === 'ArrowRight' || ev.key === 'ArrowDown' ? 1 : -1;
+            const next = INPUT_MODES[(index + direction + INPUT_MODES.length) % INPUT_MODES.length];
+            if (next)
+                selectInputMode(next.mode);
+            return;
+        }
+    }
     const row = ev.target.closest?.('tr[data-act="hist-open"]');
     if (row && (ev.key === 'Enter' || ev.key === ' ')) {
         ev.preventDefault();

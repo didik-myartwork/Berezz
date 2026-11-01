@@ -52,6 +52,33 @@ test('Versi CSV kontak terimpor dan diklasifikasi lewat domain organisasi', () =
   assert.equal(byName('Tim Makassar').members.length, 4);
 });
 
+test('Parser hari libur mengenali format tanggal umum dan menolak tanggal tidak valid', () => {
+  assert.deepEqual(D.parseHolidayLine('2026-12-25 Hari Raya Natal'), { date: '2026-12-25', name: 'Hari Raya Natal' });
+  assert.deepEqual(D.parseHolidayLine('24/12/2026 Cuti bersama Natal'), { date: '2026-12-24', name: 'Cuti bersama Natal' });
+  assert.deepEqual(D.parseHolidayLine('1 Januari 2027 Tahun Baru'), { date: '2027-01-01', name: 'Tahun Baru' });
+  assert.deepEqual(D.parseHolidayLine('29 Februari 2028 Tahun Kabisat'), { date: '2028-02-29', name: 'Tahun Kabisat' });
+  assert.equal(D.parseHolidayLine('2026-02-30 Tanggal mustahil'), null);
+  assert.equal(D.parseHolidayLine('31/04/2026 Tanggal mustahil'), null);
+});
+
+test('Parser daftar kalender memisahkan baris valid dan invalid; tanggal duplikat diperbarui', () => {
+  const parsed = D.parseHolidayList([
+    'Tanggal, Nama',
+    '',
+    '2026-12-25 Natal',
+    '25/12/2026 Hari Raya Natal',
+    '2026-13-01 Tanggal mustahil',
+    'catatan yang bukan tanggal',
+  ].join('\n'));
+  assert.deepEqual(parsed.holidays, [
+    { date: '2026-12-25', name: 'Natal' },
+    { date: '2026-12-25', name: 'Hari Raya Natal' },
+  ]);
+  assert.deepEqual(parsed.skipped, ['2026-13-01 Tanggal mustahil', 'catatan yang bukan tanggal']);
+  const dataset = D.upsertHolidays(D.emptyDataset(), parsed.holidays, 'Tes parser');
+  assert.deepEqual(dataset.holidays, [{ date: '2026-12-25', name: 'Hari Raya Natal', source: 'Tes parser' }]);
+});
+
 for (const c of loadCases()) {
   test(`${c.id} ${c.title}`, () => {
     const { failures } = runCaseHeadless(c);
