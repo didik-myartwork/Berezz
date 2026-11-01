@@ -1,0 +1,69 @@
+{
+  "_label": "DATASET UJI — dibuat tim Berezz, bukan dataset/test resmi panitia. Organisasi, orang, alamat email, SOP, dan kebijakan cuti di berkas ini fiktif. Semua alamat memakai domain cadangan .test/.example sehingga tidak bisa terkirim ke mana pun.",
+  "organization": {
+    "name": "PT Teduh Rapi Nusantara (fiktif)",
+    "domains": ["teduhrapi.test"],
+    "headquarters": "Jakarta",
+    "branches": ["Bandung", "Surabaya", "Semarang", "Makassar", "Balikpapan", "Denpasar", "Jayapura", "Sorong"]
+  },
+  "contacts": [
+    { "name": "Budi Santoso", "email": "budi.santoso@teduhrapi.test", "timezone": "WIB", "city": "Jakarta", "role": "Manajer Operasional", "kind": "internal", "aliases": ["Pak Budi", "Budi S"] },
+    { "name": "Budi Hartono", "email": "budi.hartono@teduhrapi.test", "timezone": "WITA", "city": "Makassar", "role": "Kepala Keuangan Cabang Makassar", "kind": "internal", "aliases": ["Pak Budi", "Budi H"] },
+    { "name": "Rina Wijaya", "email": "rina.wijaya@teduhrapi.test", "timezone": "WIB", "city": "Bandung", "role": "Lead Proposal", "kind": "internal", "aliases": ["Bu Rina"] },
+    { "name": "Sari Dewanti", "email": "sari.dewanti@teduhrapi.test", "city": "Jakarta", "role": "Admin Proyek (zona waktu belum diisi HR)", "kind": "internal", "aliases": ["Bu Sari"] },
+    { "name": "Andi Pratama", "email": "andi.pratama@teduhrapi.test", "timezone": "WIT", "city": "Jayapura", "role": "Teknisi Lapangan", "kind": "internal", "aliases": ["Mas Andi"] },
+    { "name": "Hendra Gunawan", "email": "hendra.gunawan@teduhrapi.test", "timezone": "WIB", "city": "Jakarta", "role": "Direktur Utama", "kind": "internal", "aliases": ["Pak Hendra"] },
+    { "name": "Ayu Kartika", "email": "ayu.kartika@teduhrapi.test", "timezone": "WIB", "city": "Jakarta", "role": "Kepala HR", "kind": "internal", "aliases": ["Bu Ayu"] },
+    { "name": "Maria Tanoto", "email": "maria.tanoto@teduhrapi.test", "timezone": "WIB", "city": "Jakarta", "role": "Staf Keuangan Pusat", "kind": "internal", "aliases": ["Bu Maria"] },
+    { "name": "Putri Ramadhani", "email": "putri.ramadhani@teduhrapi.test", "timezone": "WIB", "city": "Surabaya", "role": "Koordinator Pemasaran", "kind": "internal", "aliases": ["Mbak Putri"] },
+    { "name": "Teguh Prasetyo", "email": "teguh.prasetyo@teduhrapi.test", "timezone": "WIB", "city": "Semarang", "role": "Staf IT", "kind": "internal", "aliases": ["Mas Teguh"] },
+    { "name": "Fajar Nugroho", "email": "fajar.nugroho@teduhrapi.test", "timezone": "WITA", "city": "Makassar", "role": "Supervisor Gudang Makassar", "kind": "internal", "aliases": ["Mas Fajar"] },
+    { "name": "Lina Marlina", "email": "lina.marlina@teduhrapi.test", "timezone": "WITA", "city": "Makassar", "role": "Admin Gudang Makassar", "kind": "internal", "aliases": ["Bu Lina"] },
+    { "name": "Yusuf Rahman", "email": "yusuf.rahman@teduhrapi.test", "timezone": "WITA", "city": "Makassar", "role": "Staf Logistik Makassar", "kind": "internal", "aliases": ["Pak Yusuf"] },
+    { "name": "Nur Aini", "email": "nur.aini@teduhrapi.test", "timezone": "WITA", "city": "Balikpapan", "role": "Admin Cabang Balikpapan", "kind": "internal", "aliases": ["Bu Nur"] },
+    { "name": "Dimas Saputra", "email": "dimas.saputra@teduhrapi.test", "timezone": "WITA", "city": "Denpasar", "role": "Sales Area Bali", "kind": "internal", "aliases": ["Mas Dimas"] },
+    { "name": "Yohanes Wenda", "email": "yohanes.wenda@teduhrapi.test", "timezone": "WIT", "city": "Sorong", "role": "Kepala Gudang Sorong", "kind": "internal", "aliases": ["Pak Yohanes"] },
+    {
+      "name": "Tim Makassar",
+      "email": "tim-makassar@teduhrapi.test",
+      "timezone": "WITA",
+      "city": "Makassar",
+      "role": "Grup tim cabang Makassar",
+      "kind": "internal",
+      "aliases": ["tim Makassar", "tim cabang Makassar"],
+      "members": ["Budi Hartono", "Fajar Nugroho", "Lina Marlina", "Yusuf Rahman"]
+    },
+    {
+      "name": "Semua Staf",
+      "email": "semua-staf@teduhrapi.test",
+      "timezone": "WIB",
+      "city": "Jakarta",
+      "role": "Milis seluruh karyawan",
+      "kind": "internal",
+      "aliases": ["semua staf", "seluruh staf", "all staff"],
+      "members": [
+        "Budi Santoso", "Budi Hartono", "Rina Wijaya", "Sari Dewanti", "Andi Pratama", "Hendra Gunawan",
+        "Ayu Kartika", "Maria Tanoto", "Putri Ramadhani", "Teguh Prasetyo", "Fajar Nugroho", "Lina Marlina",
+        "Yusuf Rahman", "Nur Aini", "Dimas Saputra", "Yohanes Wenda"
+      ]
+    },
+    { "name": "Dewi Anggraini", "email": "dewi.anggraini@logistikmaju.example", "timezone": "WIB", "city": "Surabaya", "role": "Account Manager, PT Logistik Maju (vendor fiktif)", "kind": "external", "aliases": ["vendor", "vendor logistik", "Bu Dewi"] },
+    { "name": "Robert Simanjuntak", "email": "robert.s@klien-sentosa.example", "timezone": "WIB", "city": "Medan", "role": "Manajer Pengadaan, CV Klien Sentosa (klien fiktif)", "kind": "external", "aliases": ["klien", "Pak Robert"] },
+    { "name": "Kadek Wirawan", "email": "kadek@katering-bali.example", "timezone": "WITA", "city": "Denpasar", "role": "Pemilik usaha katering (vendor fiktif)", "kind": "external", "aliases": ["Pak Kadek"] },
+    { "name": "Fransiska Lim", "email": "fransiska.lim@konsultan-pajak.example", "city": "Pontianak", "role": "Konsultan pajak eksternal (zona waktu tidak tercatat)", "kind": "external", "aliases": ["Bu Fransiska"] }
+  ],
+  "rules": {
+    "source": "SOP-OPS-03 Jam Kerja & Tata Kelola Rapat, PT Teduh Rapi Nusantara (fiktif), rev. Okt 2026",
+    "officeHours": { "start": "08:00", "end": "17:00", "weekdays": [1, 2, 3, 4, 5] },
+    "fridayPrayer": { "start": "11:30", "end": "13:00" },
+    "meetingDefaultMinutes": 60,
+    "maxClarificationRounds": 3,
+    "undoWindowSeconds": 60
+  },
+  "holidays": [
+    { "date": "2026-11-13", "name": "Cuti bersama perusahaan — HUT PT Teduh Rapi Nusantara (kebijakan perusahaan, bukan libur nasional)", "source": "Memo HR-2026-11 PT Teduh Rapi Nusantara (fiktif)" },
+    { "date": "2026-12-24", "name": "Cuti bersama perusahaan menjelang Natal (kebijakan perusahaan, bukan SKB pemerintah)", "source": "Memo HR-2026-12 PT Teduh Rapi Nusantara (fiktif)" },
+    { "date": "2026-12-25", "name": "Hari Raya Natal", "source": "Libur nasional bertanggal tetap (25 Desember)" },
+    { "date": "2027-01-01", "name": "Tahun Baru 2027 Masehi", "source": "Libur nasional bertanggal tetap (1 Januari)" }
+  ]
+}

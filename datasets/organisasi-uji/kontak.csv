@@ -1,0 +1,13 @@
+nama,email,zona_waktu,kota,jabatan,alias,anggota
+Budi Santoso,budi.santoso@teduhrapi.test,WIB,Jakarta,Manajer Operasional,Pak Budi;Budi S,
+Budi Hartono,budi.hartono@teduhrapi.test,WITA,Makassar,Kepala Keuangan Cabang Makassar,Pak Budi;Budi H,
+Rina Wijaya,rina.wijaya@teduhrapi.test,WIB,Bandung,Lead Proposal,Bu Rina,
+Sari Dewanti,sari.dewanti@teduhrapi.test,,Jakarta,Admin Proyek,Bu Sari,
+Andi Pratama,andi.pratama@teduhrapi.test,WIT,Jayapura,Teknisi Lapangan,Mas Andi,
+Hendra Gunawan,hendra.gunawan@teduhrapi.test,WIB,Jakarta,Direktur Utama,Pak Hendra,
+Fajar Nugroho,fajar.nugroho@teduhrapi.test,WITA,Makassar,Supervisor Gudang Makassar,Mas Fajar,
+Lina Marlina,lina.marlina@teduhrapi.test,WITA,Makassar,Admin Gudang Makassar,Bu Lina,
+Yusuf Rahman,yusuf.rahman@teduhrapi.test,WITA,Makassar,Staf Logistik Makassar,Pak Yusuf,
+Tim Makassar,tim-makassar@teduhrapi.test,WITA,Makassar,Grup tim cabang Makassar,tim Makassar,Budi Hartono;Fajar Nugroho;Lina Marlina;Yusuf Rahman
+Dewi Anggraini,dewi.anggraini@logistikmaju.example,WIB,Surabaya,"Account Manager, PT Logistik Maju (vendor fiktif)",vendor;Bu Dewi,
+Robert Simanjuntak,robert.s@klien-sentosa.example,WIB,Medan,"Manajer Pengadaan, CV Klien Sentosa (klien fiktif)",klien;Pak Robert,

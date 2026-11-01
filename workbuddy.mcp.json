@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "berezz": {
+      "command": "node",
+      "args": ["mcp/berezz-mcp.mjs"],
+      "env": {
+        "BEREZZ_URL": "http://localhost:8787"
+      }
+    }
+  }
+}

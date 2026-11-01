@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Arsitektur Berezz</title>
+<style>
+@font-face { font-family: 'Geist'; src: url('../app/fonts/Geist-Variable.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'Geist Mono'; src: url('../app/fonts/GeistMono-Variable.woff2') format('woff2'); font-weight: 100 900; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #fafafa; font: 14px/1.45 Geist, system-ui, sans-serif; color: #111113; }
+.canvas { width: 1600px; padding: 40px 48px 44px; }
+h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+.sub { margin: 4px 0 26px; color: #46464e; font-size: 15px; }
+.row { display: grid; grid-template-columns: 300px 1fr 250px; gap: 22px; align-items: stretch; }
+.zone { border: 1.5px dashed #c8c8d0; border-radius: 16px; padding: 18px; position: relative; background: #fff; }
+.zone > .zt { position: absolute; top: -11px; left: 16px; background: #fafafa; padding: 0 8px; font-size: 12.5px; font-weight: 600; color: #46464e; }
+.z2 { border-color: #c8c8f3; background: #fbfbff; }
+.z3 { border-color: #f4dcae; background: #fffdf8; }
+.n { border: 1px solid #e6e6e9; border-radius: 10px; padding: 10px 12px; background: #fff; box-shadow: 0 1px 2px rgba(17,17,22,.05); }
+.n b { display: block; font-size: 14px; }
+.n span { display: block; font-size: 12.5px; color: #6b6b74; margin-top: 2px; }
+.n.gate { border: 2px solid #18181b; }
+.n.warn { border-color: #f4dcae; background: #fff8ec; }
+.n.ok { border-color: #c4e6d2; background: #eef8f2; }
+.n.iris { border-color: #c8c8f3; background: #eeeefc; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 26px; position: relative; }
+.arrow { position: relative; }
+.arrow::after { content: '→'; position: absolute; right: -20px; top: 50%; transform: translateY(-50%); color: #8a8a93; font-size: 18px; }
+.down { text-align: center; color: #8a8a93; font-size: 18px; line-height: 1; }
+.legend { display: flex; gap: 22px; margin-top: 24px; font-size: 12.5px; color: #46464e; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.mono { font-family: 'Geist Mono', monospace; font-size: 12px; }
+.no { color: #c02d28; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <h1>Berezz — arsitektur dan batas kepercayaan</h1>
+  <p class="sub">Model dan agent hanya mengusulkan. Gerbang deterministik di server memutuskan apa yang boleh mencapai konektor, dan hanya setelah manusia menyetujui versi yang persis.</p>
+  <div class="row">
+    <section class="zone">
+      <div class="zt">1 · Input tidak tepercaya</div>
+      <div class="stack">
+        <div class="n"><b>Penyetuju di UI Berezz</b><span>Tempel chat/notulen, unggah berkas, voice note id-ID</span></div>
+        <div class="n iris"><b>Agent WorkBuddy</b><span>Skill planner &amp; reviewer → server MCP Berezz</span><span class="mono">create_job · propose_plan · get_job · list_jobs · find_contacts</span><span class="no">tidak ada approve / send / undo</span></div>
+        <div class="n warn"><b>Lampiran &amp; notulen</b><span>Dibaca sebagai data. Baris "AI: …" ditandai dan diabaikan.</span></div>
+        <div class="n"><b>Planner model (opsional)</b><span>API kompatibel OpenAI, mis. Hunyuan. Hanya menyumbang teks draf.</span></div>
+      </div>
+    </section>
+
+    <section class="zone z2">
+      <div class="zt">2 · Server Berezz — satu sumber kebenaran</div>
+      <div class="flow">
+        <div class="n arrow"><b>Intake</b><span>Simpan permintaan mentah, pindai injeksi</span></div>
+        <div class="n arrow"><b>Planner</b><span>Aturan Berezz, atau usulan model/agent</span></div>
+        <div class="n arrow"><b>Grounding</b><span>Kutipan wajib verbatim; penerima, tanggal, jam diturunkan ulang</span></div>
+        <div class="n"><b>Validator</b><span>Kontak ganda/tak dikenal · WIB/WITA/WIT · jam kerja · salat Jumat · libur</span></div>
+        <div class="n arrow"><b>Klarifikasi</b><span>Satu pertanyaan per aksi · maks 3 putaran → eskalasi</span></div>
+        <div class="n arrow"><b>Reviewer kedua</b><span>Rencana vs permintaan asli: aksi hilang, tambahan, penerima tanpa sumber</span></div>
+        <div class="n arrow"><b>Layar persetujuan</b><span>Detail persis · versi + fingerprint · centang eksternal/banyak penerima</span></div>
+        <div class="n gate"><b>Gerbang deterministik</b><span>Hanya status approved dengan fingerprint sama</span></div>
+      </div>
+      <div class="down" style="margin:10px 0 6px">↓</div>
+      <div class="flow" style="grid-template-columns: 1fr 1fr 1fr">
+        <div class="n ok"><b>Antrean 60 detik</b><span>Bisa diurungkan · fingerprint dicek ulang saat dikirim</span></div>
+        <div class="n"><b>Data organisasi</b><span>Kontak · aturan SOP · kalender libur — diimpor, tanpa data bawaan</span></div>
+        <div class="n"><b>Audit per job</b><span>Permintaan, sumber, temuan, jawaban, versi, siapa menyetujui, hasil tool — ekspor JSON</span></div>
+      </div>
+    </section>
+
+    <section class="zone z3">
+      <div class="zt">3 · Efek samping</div>
+      <div class="stack">
+        <div class="n"><b>Konektor email</b><span>SIMULASI</span></div>
+        <div class="n"><b>Konektor kalender</b><span>SIMULASI</span></div>
+        <div class="n"><b>Konektor task board</b><span>SIMULASI</span></div>
+        <div class="n warn"><b>Produksi</b><span>Ganti adapter di belakang gerbang yang sama; agent tetap tanpa akses</span></div>
+      </div>
+    </section>
+  </div>
+  <div class="legend">
+    <span><i style="background:#eeeefc;border:1px solid #c8c8f3"></i>Agent / model: hanya usul</span>
+    <span><i style="background:#fff;border:2px solid #18181b"></i>Keputusan deterministik</span>
+    <span><i style="background:#fff8ec;border:1px solid #f4dcae"></i>Data tidak tepercaya / perlu perhatian</span>
+    <span><i style="background:#eef8f2;border:1px solid #c4e6d2"></i>Ruang koreksi setelah persetujuan</span>
+  </div>
+</div>
+</body>
+</html>

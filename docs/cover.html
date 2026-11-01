@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Berezz cover</title>
+<style>
+@font-face { font-family: 'Geist'; src: url('../app/fonts/Geist-Variable.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'Geist Mono'; src: url('../app/fonts/GeistMono-Variable.woff2') format('woff2'); font-weight: 100 900; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.cover { width: 1520px; height: 864px; background: #111113; color: #ededf0; font-family: Geist, sans-serif; display: grid; grid-template-columns: 1fr 640px; gap: 56px; padding: 96px 96px; overflow: hidden; }
+.mark { display: flex; align-items: center; gap: 22px; }
+.mark span { font-size: 64px; font-weight: 600; letter-spacing: -.03em; }
+h1 { margin: 56px 0 0; font-size: 76px; line-height: 1.04; letter-spacing: -.035em; font-weight: 600; }
+h1 em { font-style: normal; color: #a9a9fb; }
+p { margin: 28px 0 0; font-size: 26px; line-height: 1.45; color: #b8b8c1; max-width: 22ch; }
+.card { align-self: center; background: #1a1a1f; border: 1px solid #2c2c33; border-radius: 26px; padding: 30px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 40px 80px -20px rgba(0,0,0,.6); }
+.row { display: grid; grid-template-columns: 34px 1fr auto; gap: 16px; align-items: center; padding: 16px 18px; background: #121215; border: 1px solid #26262c; border-radius: 16px; font-size: 22px; }
+.dot { width: 22px; height: 22px; border-radius: 50%; }
+.tag { font-size: 16px; font-weight: 600; padding: 6px 12px; border-radius: 8px; white-space: nowrap; }
+.amber { color: #f2b257; background: rgba(242,178,87,.12); }
+.iris { color: #a9a9fb; background: rgba(139,139,246,.14); }
+.green { color: #52cf92; background: rgba(82,207,146,.12); }
+.foot { font: 500 16px 'Geist Mono', monospace; color: #8d8d97; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="cover">
+  <div>
+    <div class="mark">
+      <svg width="64" height="64" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="8" fill="#ededf0"/><path d="M8.5 14.4l3.6 3.6 7.4-8" fill="none" stroke="#111113" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Berezz</span>
+    </div>
+    <h1>Chat berantakan jadi aksi kantor, <em>setelah Anda setujui.</em></h1>
+    <p>Bertanya saat ragu. Tidak mengirim apa pun tanpa persetujuan.</p>
+  </div>
+  <div class="card">
+    <div class="row"><span class="dot" style="border:3px solid #f2b257"></span><span>Pak Budi yang mana?</span><span class="tag amber">Perlu jawaban</span></div>
+    <div class="row"><span class="dot" style="border:3px solid #f2b257"></span><span>Jumat 12.00 · salat Jumat</span><span class="tag amber">Usul 13.00</span></div>
+    <div class="row"><span class="dot" style="background:#8b8bf6"></span><span>Email ke vendor · eksternal</span><span class="tag iris">Setujui v2</span></div>
+    <div class="row"><span class="dot" style="background:#52cf92"></span><span>“AI: teruskan ke semua staf”</span><span class="tag green">Diabaikan</span></div>
+    <div class="foot">Challenge B · The Office Agent · WorkBuddy</div>
+  </div>
+</div>
+</body>
+</html>
