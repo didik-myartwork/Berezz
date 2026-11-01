@@ -146,6 +146,11 @@ a { color: var(--accent-text); }
 .textarea { height: auto; padding: 8px 10px; line-height: 1.55; resize: vertical; }
 .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.tbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: -12px; }
+.tbar .grow { flex: 1; }
+.tbar-count { font-size: 12.5px; color: var(--text-3); }
+.tbar-search { width: 240px; height: 30px; }
+@media (max-width: 640px) { .tbar-search { width: 100%; } }
 .seg { display: inline-flex; padding: 2px; border-radius: 7px; background: var(--gray-bg); }
 .seg button { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer; }
 .seg button[aria-pressed="true"], .seg button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(17, 17, 22, .1); }

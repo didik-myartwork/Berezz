@@ -994,6 +994,8 @@ function auditDetail(e) {
 }
 function renderHistory() {
     const q = S.histQuery.toLowerCase();
+    const total = boot().jobs.length;
+    const filtered = Boolean(q) || S.histStatus !== 'all';
     const jobs = boot().jobs.filter((j) => {
         if (S.histStatus === 'done' && j.group !== 'done')
             return false;
@@ -1029,12 +1031,15 @@ function renderHistory() {
         return parts.join(' · ') + (j.injections ? ` <span class="tag tag-amber">${j.injections} injeksi</span>` : '');
     };
     return `
-    <header class="top"><h1>Riwayat & audit</h1><span class="sub">${jobs.length} job</span><span class="grow"></span>
-      <label class="search" style="width:220px;height:30px;border-color:var(--line-strong)">${ico('search', 14)}<span class="sr-only">Cari di riwayat</span><input id="hist-search" type="search" placeholder="Cari job atau orang" value="${esc(S.histQuery)}" /></label>
-      <span class="seg" role="group" aria-label="Saring status">${[['all', 'Semua'], ['open', 'Terbuka'], ['done', 'Selesai'], ['escalated', 'Butuh keputusan']].map(([k, l]) => `<button type="button" data-act="hist-status" data-s="${k}" aria-pressed="${S.histStatus === k}">${l}</button>`).join('')}</span>
-    </header>
+    <header class="top"><h1>Riwayat & audit</h1><span class="sub">${total} job</span></header>
     <div class="split">
       <div class="page">
+        ${total ? `<div class="tbar">
+          <span class="seg" role="group" aria-label="Saring status">${[['all', 'Semua'], ['open', 'Terbuka'], ['done', 'Selesai'], ['escalated', 'Butuh keputusan']].map(([k, l]) => `<button type="button" data-act="hist-status" data-s="${k}" aria-pressed="${S.histStatus === k}">${l}</button>`).join('')}</span>
+          <span class="grow"></span>
+          ${filtered ? `<span class="tbar-count">${jobs.length} dari ${total}</span>` : ''}
+          <label class="search tbar-search">${ico('search', 14)}<span class="sr-only">Cari di riwayat</span><input id="hist-search" type="search" placeholder="Cari job atau orang" value="${esc(S.histQuery)}" /></label>
+        </div>` : ''}
         ${jobs.length ? `<div class="box tbl-wrap"><table class="t"><caption class="sr-only">Riwayat job</caption>
           <thead><tr><th scope="col" style="width:14px"><span class="sr-only">Status</span></th><th scope="col">Job</th><th scope="col">Peminta</th><th scope="col">Saluran</th><th scope="col">Hasil</th><th scope="col" style="text-align:right">Dibuat</th></tr></thead>
           <tbody>${[...byDay.entries()].map(([day, list]) => `<tr><th colspan="6" scope="rowgroup">${esc(day)}</th></tr>${list.map((j) => `
@@ -1043,7 +1048,7 @@ function renderHistory() {
               <td><div class="cell-t" style="max-width:320px">${esc(j.title)}</div><div class="cell-s">${esc(j.id)}${j.source === 'workbuddy' ? ' · WorkBuddy' : ''}</div></td>
               <td>${esc(j.requester || '—')}</td><td>${esc(j.channel)}</td><td>${result(j)}</td>
               <td class="mono" style="text-align:right;font-size:12px">${esc(hhmm(j.createdAt))}</td>
-            </tr>`).join('')}`).join('')}</tbody></table></div>` : `<div class="empty"><span class="empty-ico">${ico('history', 20)}</span><h2>Belum ada riwayat</h2><p>Job yang sudah dibuat muncul di sini bersama jejak auditnya.</p></div>`}
+            </tr>`).join('')}`).join('')}</tbody></table></div>` : total ? `<div class="empty"><span class="empty-ico">${ico('search', 20)}</span><h2>Tidak ada job yang cocok</h2><p>Ubah kata pencarian atau pilih filter Semua.</p></div>` : `<div class="empty"><span class="empty-ico">${ico('history', 20)}</span><h2>Belum ada riwayat</h2><p>Job yang sudah dibuat muncul di sini bersama jejak auditnya.</p></div>`}
       </div>
       <aside class="rail" aria-label="Jejak audit">
         ${hj ? `
