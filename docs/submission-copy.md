@@ -38,7 +38,7 @@ Pelajaran utamanya: WorkBuddy dapat menyusun rencana dan memberi opini kedua, se
 
 ## Source code
 
-Source code tersedia di repo lokal Berezz (branch `main`, commit `c42dcc6`). **Belum ada remote atau URL repo publik**, sehingga item ini belum siap dikirim. Saat mempublikasikan, sertakan `src/`, `app/`, `server.mjs`, `mcp/`, `workbuddy/`, tests, dan dokumen; jangan sertakan `data/`, `.env`, kunci API, atau data organisasi nyata.
+Source code publik: [github.com/didik-myartwork/Berezz](https://github.com/didik-myartwork/Berezz). Repo berisi `src/`, `app/`, `server.mjs`, `mcp/`, `workbuddy/`, tests, screenshot, dan dokumen. `data/`, `.env`, kunci API, serta data organisasi nyata tidak disertakan.
 
 ## Demo video
 Ikuti `docs/demo-script.md` (target 6 menit).
